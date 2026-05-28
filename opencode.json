@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "default_agent": "orchestrator",
+  "agent": {
+    "plan": {
+      "description": "Read-only planning, design, review, and OpenSpec proposal work. Cannot edit the repo.",
+      "model": "github-copilot/claude-opus-4.6"
+    },
+    "build": {
+      "description": "Direct coding agent for small, well-scoped edits. Bump to opus for irreversible changes or when sonnet fails.",
+      "model": "github-copilot/claude-sonnet-4.6"
+    },
+    "orchestrator": {
+      "description": "Master delegator and primary coding agent (oh-my-opencode-slim). Bump to opus for adding new scanners or large refactors.",
+      "model": "github-copilot/claude-sonnet-4.6",
+      "prompt": "Always read AGENTS.md first. Prioritize retrieval-led reasoning over pretrained-knowledge-led reasoning. This is a Go CLI for software supply chain scanning (go.mod, npm lockfiles, OSV API). See SPEC.md for the v1 design. CVE databases and SBOM specs evolve -- use @librarian to verify OSV, SARIF, and registry API details before assuming. Delegate scoped work to specialist agents (explorer, oracle, librarian, fixer) when it improves quality, speed, or cost."
+    },
+    "explorer": {
+      "description": "Read-only codebase reconnaissance. High-volume cheap reads.",
+      "model": "github-copilot/claude-haiku-4.5"
+    },
+    "oracle": {
+      "description": "Architecture advisor and debugger of last resort. Always opus.",
+      "model": "github-copilot/claude-opus-4.6"
+    },
+    "librarian": {
+      "description": "External knowledge retrieval (websearch, context7, grep_app). OSV API, CycloneDX spec, SPDX spec, npm registry, Go vuln DB.",
+      "model": "github-copilot/claude-haiku-4.5"
+    },
+    "designer": {
+      "description": "Terminal output formatting, SARIF structure, report layout.",
+      "model": "github-copilot/claude-sonnet-4.6"
+    },
+    "fixer": {
+      "description": "Fast, scoped implementation worker. Haiku for mechanical edits.",
+      "model": "github-copilot/claude-haiku-4.5"
+    }
+  },
+  "plugin": [
+    "oh-my-opencode-slim"
+  ],
+  "experimental": {
+    "openspec": {
+      "enabled": true,
+      "workflows": ["opsx-explorer", "opsx-propose", "opsx-apply", "opsx-verify", "opsx-archive"]
+    }
+  }
+}

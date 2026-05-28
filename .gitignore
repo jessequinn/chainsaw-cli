@@ -1,0 +1,43 @@
+# Build output
+chainsaw
+chainsaw.exe
+dist/
+
+# Go
+coverage.txt
+*.out
+*.prof
+
+# JS/TS
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+config.yaml
+config.yaml.old
+
+# Test artefacts
+.playwright/
+*.log
+
+# Scan output
+reports/
+output/
+
+# Cache
+.drift-cache/
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
