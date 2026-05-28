@@ -1,0 +1,16 @@
+# Chainsaw policy configuration
+policy:
+  # Minimum severity to fail the scan (critical, high, medium, low, none)
+  fail-on: high
+
+  # CVE/GHSA IDs to ignore (accepted risk)
+  ignore: []
+    # - CVE-2024-1234
+    # - GHSA-xxxx-yyyy
+
+  # License policy
+  licenses:
+    deny:
+      - GPL-3.0-only
+      - AGPL-3.0-only
+      - AGPL-3.0-or-later
