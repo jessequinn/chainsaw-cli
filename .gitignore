@@ -1,6 +1,6 @@
 # Build output
-chainsaw
-chainsaw.exe
+/chainsaw
+/chainsaw.exe
 dist/
 
 # Go

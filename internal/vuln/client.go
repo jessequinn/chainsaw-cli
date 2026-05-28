@@ -111,8 +111,22 @@ func (c *Client) QueryBatch(components []models.Component) ([]models.Finding, er
 }
 
 func (c *Client) queryBatch(components []models.Component) ([]models.Finding, error) {
-	queries := make([]osvQuery, len(components))
+	// Filter components to only those with known OSV ecosystems
+	var validComponents []models.Component
+	var componentIndices []int
 	for i, comp := range components {
+		if osvEco := mapEcosystem(comp.Ecosystem); osvEco != "" {
+			validComponents = append(validComponents, comp)
+			componentIndices = append(componentIndices, i)
+		}
+	}
+
+	if len(validComponents) == 0 {
+		return nil, nil
+	}
+
+	queries := make([]osvQuery, len(validComponents))
+	for i, comp := range validComponents {
 		queries[i] = osvQuery{
 			Package: osvPackage{
 				Name:      comp.Name,
@@ -144,10 +158,10 @@ func (c *Client) queryBatch(components []models.Component) ([]models.Finding, er
 
 	var findings []models.Finding
 	for i, result := range batchResp.Results {
-		if i >= len(components) {
+		if i >= len(validComponents) {
 			break
 		}
-		comp := components[i]
+		comp := validComponents[i]
 		for _, vuln := range result.Vulns {
 			findings = append(findings, toFinding(vuln, comp))
 		}
@@ -238,6 +252,8 @@ func mapEcosystem(eco models.Ecosystem) string {
 		return "npm"
 	case "pypi":
 		return "PyPI"
+	case "hex":
+		return "Hex"
 	case "maven":
 		return "Maven"
 	case "nuget":
@@ -247,6 +263,6 @@ func mapEcosystem(eco models.Ecosystem) string {
 	case "rubygems":
 		return "RubyGems"
 	default:
-		return string(eco)
+		return ""
 	}
 }

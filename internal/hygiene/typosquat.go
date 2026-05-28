@@ -50,6 +50,47 @@ var popularNpm = []string{
 	"dotenv",
 }
 
+var popularPyPI = []string{
+	"requests", "boto3", "urllib3", "setuptools", "wheel", "pip",
+	"certifi", "idna", "charset-normalizer", "typing-extensions",
+	"numpy", "pandas", "pyyaml", "cryptography", "flask", "django",
+	"jinja2", "pillow", "scipy", "matplotlib",
+}
+
+var popularActions = []string{
+	"actions/checkout", "actions/setup-node", "actions/setup-go",
+	"actions/setup-python", "actions/setup-java", "actions/cache",
+	"actions/upload-artifact", "actions/download-artifact",
+	"actions/github-script", "actions/labeler",
+	"docker/build-push-action", "docker/setup-buildx-action",
+	"docker/login-action", "codecov/codecov-action",
+	"softprops/action-gh-release", "peter-evans/create-pull-request",
+	"hashicorp/setup-terraform", "aws-actions/configure-aws-credentials",
+	"google-github-actions/auth", "azure/login",
+}
+
+var popularDocker = []string{
+	"ubuntu", "alpine", "debian", "node", "python", "golang", "nginx",
+	"redis", "postgres", "mysql", "mongo", "httpd", "busybox",
+	"amazoncorretto", "eclipse-temurin", "docker", "registry",
+	"traefik", "haproxy", "memcached",
+}
+
+var popularTerraform = []string{
+	"hashicorp/aws", "hashicorp/azurerm", "hashicorp/google",
+	"hashicorp/kubernetes", "hashicorp/helm", "hashicorp/null",
+	"hashicorp/random", "hashicorp/local", "hashicorp/external",
+	"hashicorp/tls", "hashicorp/vault", "hashicorp/consul",
+	"hashicorp/nomad", "integrations/github",
+}
+
+var popularAnsible = []string{
+	"community.general", "community.aws", "amazon.aws",
+	"ansible.posix", "ansible.netcommon", "community.docker",
+	"community.postgresql", "community.mysql", "community.crypto",
+	"kubernetes.core", "ansible.windows", "community.vmware",
+}
+
 // levenshtein computes the Levenshtein edit distance between two strings.
 func levenshtein(a, b string) int {
 	la := len(a)
@@ -103,6 +144,16 @@ func popularListForEcosystem(eco models.Ecosystem) []string {
 		return popularGo
 	case models.EcosystemNpm:
 		return popularNpm
+	case models.EcosystemPyPI:
+		return popularPyPI
+	case models.EcosystemGitHubActions:
+		return popularActions
+	case models.EcosystemDocker:
+		return popularDocker
+	case models.EcosystemTerraform:
+		return popularTerraform
+	case models.EcosystemAnsible:
+		return popularAnsible
 	default:
 		return nil
 	}
