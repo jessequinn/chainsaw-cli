@@ -1,0 +1,14 @@
+[[package]]
+name = "requests"
+version = "2.31.0"
+description = "Python HTTP for Humans."
+
+[[package]]
+name = "flask"
+version = "3.0.2"
+description = "A simple framework for building complex web applications."
+
+[[package]]
+name = "numpy"
+version = "1.26.4"
+description = "Fundamental package for array computing in Python"

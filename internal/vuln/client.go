@@ -77,12 +77,14 @@ type osvEvent struct {
 // Client queries the OSV.dev API for known vulnerabilities.
 type Client struct {
 	httpClient *http.Client
+	baseURL    string
 }
 
 // NewClient creates a Client with a 30-second HTTP timeout.
 func NewClient() *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL:    osvAPIURL,
 	}
 }
 
@@ -142,7 +144,7 @@ func (c *Client) queryBatch(ctx context.Context, components []models.Component) 
 		return nil, fmt.Errorf("marshal osv request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, osvAPIURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("creating osv request: %w", err)
 	}

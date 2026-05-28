@@ -1,0 +1,10 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+      - uses: docker/build-push-action@abc123def456789012345678901234567890abcd
+      - run: go test ./...

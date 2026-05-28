@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  web:
+    image: nginx:1.25
+    ports:
+      - "80:80"
+  db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_PASSWORD: secret
+  cache:
+    image: redis:7.2-alpine
+  custom:
+    build: ./app

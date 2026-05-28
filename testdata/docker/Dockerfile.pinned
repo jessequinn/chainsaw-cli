@@ -1,0 +1,4 @@
+FROM golang:1.22-alpine@sha256:abc123def456 AS builder
+COPY . .
+FROM alpine@sha256:def789abc012
+COPY --from=builder /app /app
