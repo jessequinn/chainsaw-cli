@@ -12,6 +12,7 @@ import (
 	"github.com/chainsaw-dev/chainsaw/internal/analysis"
 	"github.com/chainsaw-dev/chainsaw/internal/cra"
 	"github.com/chainsaw-dev/chainsaw/internal/hygiene"
+	"github.com/chainsaw-dev/chainsaw/internal/initcmd"
 	"github.com/chainsaw-dev/chainsaw/internal/policy"
 	"github.com/chainsaw-dev/chainsaw/internal/report"
 	"github.com/chainsaw-dev/chainsaw/internal/sbom"
@@ -42,8 +43,63 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(versionCmd())
 	root.AddCommand(complyCmd())
 	root.AddCommand(supplyChainCmd())
+	root.AddCommand(initSecurityCmd())
+	root.AddCommand(initCICmd())
 
 	return root
+}
+
+func initCICmd() *cobra.Command {
+	var (
+		goVersion  string
+		failOn     string
+		policyPath string
+		ecosystems string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "init-ci [path]",
+		Short: "Generate GitHub Actions workflow for supply chain scanning",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			cfg := initcmd.DefaultCIConfig()
+			if cmd.Flags().Changed("go-version") {
+				cfg.GoVersion = goVersion
+			}
+			if cmd.Flags().Changed("fail-on") {
+				cfg.FailOn = failOn
+			}
+			if cmd.Flags().Changed("policy") {
+				cfg.PolicyPath = policyPath
+			}
+			if cmd.Flags().Changed("ecosystems") {
+				cfg.Ecosystems = ecosystems
+			}
+
+			written, err := initcmd.WriteCIFiles(root, cfg)
+			if err != nil {
+				return fmt.Errorf("writing CI workflow: %w", err)
+			}
+
+			fmt.Fprintln(os.Stdout, "Created CI workflow:")
+			for _, f := range written {
+				fmt.Fprintf(os.Stdout, "  %s\n", f)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&goVersion, "go-version", "1.22", "Go version for the workflow")
+	cmd.Flags().StringVar(&failOn, "fail-on", "HIGH", "Minimum severity to fail on")
+	cmd.Flags().StringVar(&policyPath, "policy", ".chainsaw.yaml", "Path to policy file")
+	cmd.Flags().StringVar(&ecosystems, "ecosystems", "", "Comma-separated ecosystems to scan")
+
+	return cmd
 }
 
 func scanCmd() *cobra.Command {
@@ -213,12 +269,11 @@ func complyCmd() *cobra.Command {
 			}
 
 		// Load policy to check for CRA config.
-		_, err := loadPolicy(ctx, policyPath)
+		pol, err := loadPolicy(ctx, policyPath)
 		if err != nil {
 			return err
 		}
 
-		// Policy struct has no CRA config field; use default.
 		craConfig := &cra.CRAConfig{}
 
 		// Detect and parse all dependencies.
@@ -262,6 +317,12 @@ func complyCmd() *cobra.Command {
 			}
 			result := cra.Assess(ctx, &assessCtx)
 
+			// Evaluate CRA result against policy.
+			pass, reason := pol.EvaluateCRA(result)
+			if !pass {
+				fmt.Fprintf(os.Stderr, "Policy violation: %s\n", reason)
+			}
+
 			// Output.
 			switch format {
 			case "json":
@@ -279,7 +340,10 @@ func complyCmd() *cobra.Command {
 }
 
 func supplyChainCmd() *cobra.Command {
-	var format string
+	var (
+		format     string
+		policyPath string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "supply-chain [path]",
@@ -291,6 +355,12 @@ func supplyChainCmd() *cobra.Command {
 			if len(args) > 0 {
 				root = args[0]
 			}
+
+		// Load policy.
+		pol, err := loadPolicy(ctx, policyPath)
+		if err != nil {
+			return err
+		}
 
 		// Detect and parse all dependencies.
 		scanners := resolveScanners("")
@@ -327,6 +397,12 @@ func supplyChainCmd() *cobra.Command {
 				ToolVersion:  version,
 			}
 
+			// Evaluate supply chain result against policy.
+			pass, reason := pol.EvaluateSupplyChain(result)
+			if !pass {
+				fmt.Fprintf(os.Stderr, "Policy violation: %s\n", reason)
+			}
+
 			// Output.
 			switch format {
 			case "json":
@@ -338,6 +414,7 @@ func supplyChainCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json")
+	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
 
 	return cmd
 }
@@ -367,6 +444,67 @@ func resolveScanners(ecosystemFlag string) []scanner.Scanner {
 		}
 	}
 	return out
+}
+
+func initSecurityCmd() *cobra.Command {
+	var (
+		org            string
+		email          string
+		supportEndDate string
+		csirtContact   string
+		nonInteractive bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "init-security [path]",
+		Short: "Scaffold security policy files for CRA compliance",
+		Long:  "Generate SECURITY.md, .well-known/security.txt, and .chainsaw.yaml with CRA metadata.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_ = nonInteractive // v1: always non-interactive
+
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			cfg := initcmd.DefaultSecurityConfig()
+			if org != "" {
+				cfg.OrgName = org
+				cfg.Manufacturer = org
+			}
+			if email != "" {
+				cfg.SecurityEmail = email
+			}
+			if supportEndDate != "" {
+				cfg.SupportEndDate = supportEndDate
+			}
+			if csirtContact != "" {
+				cfg.CSIRTContact = csirtContact
+			}
+
+			written, err := initcmd.WriteSecurityFiles(root, cfg)
+			if err != nil {
+				return fmt.Errorf("writing security files: %w", err)
+			}
+
+			fmt.Fprintln(os.Stdout, "Created security policy files:")
+			for _, f := range written {
+				fmt.Fprintf(os.Stdout, "  %s\n", f)
+			}
+			fmt.Fprintln(os.Stdout, "\nReview TODO markers in the generated files before committing.")
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&org, "org", "", "Organization name")
+	cmd.Flags().StringVar(&email, "email", "", "Security contact email")
+	cmd.Flags().StringVar(&supportEndDate, "support-end-date", "", "Support end date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&csirtContact, "csirt-contact", "", "CSIRT contact email")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "Skip prompts, use defaults and flags")
+
+	return cmd
 }
 
 func writeOutput(ctx context.Context, w *os.File, format string, result models.ScanResult) error {

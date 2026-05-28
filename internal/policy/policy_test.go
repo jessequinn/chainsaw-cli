@@ -162,3 +162,123 @@ func TestPolicy_Evaluate_DeniedLicence(t *testing.T) {
 		t.Errorf("violation source = %q, want %q", violations[0].Source, "policy")
 	}
 }
+
+func TestLoadPolicy_WithCRASection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+fail_on: HIGH
+cra:
+  required-score: 75
+  manufacturer: "Acme Corp"
+  security-contact: "security@acme.com"
+  support-end-date: "2027-12-31"
+  csirt-contact: "csirt@acme.com"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	p, err := LoadPolicy(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadPolicy returned error: %v", err)
+	}
+	if p.CRA.RequiredScore != 75 {
+		t.Errorf("CRA.RequiredScore = %d, want 75", p.CRA.RequiredScore)
+	}
+	if p.CRA.Manufacturer != "Acme Corp" {
+		t.Errorf("CRA.Manufacturer = %q, want %q", p.CRA.Manufacturer, "Acme Corp")
+	}
+	if p.CRA.SecurityContact != "security@acme.com" {
+		t.Errorf("CRA.SecurityContact = %q, want %q", p.CRA.SecurityContact, "security@acme.com")
+	}
+	if p.CRA.SupportEndDate != "2027-12-31" {
+		t.Errorf("CRA.SupportEndDate = %q, want %q", p.CRA.SupportEndDate, "2027-12-31")
+	}
+	if p.CRA.CSIRTContact != "csirt@acme.com" {
+		t.Errorf("CRA.CSIRTContact = %q, want %q", p.CRA.CSIRTContact, "csirt@acme.com")
+	}
+}
+
+func TestLoadPolicy_WithSupplyChainSection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+fail_on: MEDIUM
+supply-chain:
+  min-pinning-score: 80
+  require-sha-pins: true
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	p, err := LoadPolicy(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadPolicy returned error: %v", err)
+	}
+	if p.SupplyChain.MinPinningScore != 80 {
+		t.Errorf("SupplyChain.MinPinningScore = %d, want 80", p.SupplyChain.MinPinningScore)
+	}
+	if !p.SupplyChain.RequireSHAPins {
+		t.Error("SupplyChain.RequireSHAPins = false, want true")
+	}
+}
+
+func TestPolicy_EvaluateCRA_Pass(t *testing.T) {
+	p := &Policy{CRA: CRAPolicy{RequiredScore: 70}}
+	result := models.CRAResult{OverallScore: 85}
+	pass, reason := p.EvaluateCRA(result)
+	if !pass {
+		t.Errorf("expected pass, got fail: %s", reason)
+	}
+}
+
+func TestPolicy_EvaluateCRA_Fail(t *testing.T) {
+	p := &Policy{CRA: CRAPolicy{RequiredScore: 70}}
+	result := models.CRAResult{OverallScore: 50}
+	pass, reason := p.EvaluateCRA(result)
+	if pass {
+		t.Error("expected fail, got pass")
+	}
+	if reason == "" {
+		t.Error("expected non-empty reason")
+	}
+}
+
+func TestPolicy_EvaluateSupplyChain_Pass(t *testing.T) {
+	p := &Policy{SupplyChain: SupplyChainPolicy{MinPinningScore: 60}}
+	result := models.SupplyChainResult{PinningScore: 80}
+	pass, reason := p.EvaluateSupplyChain(result)
+	if !pass {
+		t.Errorf("expected pass, got fail: %s", reason)
+	}
+}
+
+func TestPolicy_EvaluateSupplyChain_Fail(t *testing.T) {
+	p := &Policy{SupplyChain: SupplyChainPolicy{MinPinningScore: 60}}
+	result := models.SupplyChainResult{PinningScore: 40}
+	pass, reason := p.EvaluateSupplyChain(result)
+	if pass {
+		t.Error("expected fail, got pass")
+	}
+	if reason == "" {
+		t.Error("expected non-empty reason")
+	}
+}
+
+func TestDefaultPolicy_V2Fields(t *testing.T) {
+	p := DefaultPolicy()
+	if p.CRA.RequiredScore != 0 {
+		t.Errorf("CRA.RequiredScore = %d, want 0", p.CRA.RequiredScore)
+	}
+	if p.SupplyChain.MinPinningScore != 0 {
+		t.Errorf("SupplyChain.MinPinningScore = %d, want 0", p.SupplyChain.MinPinningScore)
+	}
+	if p.SupplyChain.RequireSHAPins {
+		t.Error("SupplyChain.RequireSHAPins = true, want false")
+	}
+	if p.Licences.Mode != "deny" {
+		t.Errorf("Licences.Mode = %q, want %q", p.Licences.Mode, "deny")
+	}
+}

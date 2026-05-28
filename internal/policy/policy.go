@@ -15,11 +15,39 @@ type LicensePolicy struct {
 	Deny []string `yaml:"deny"`
 }
 
+// CRAPolicy defines CRA compliance thresholds.
+type CRAPolicy struct {
+	RequiredScore   int    `yaml:"required-score"`
+	Manufacturer    string `yaml:"manufacturer"`
+	SecurityContact string `yaml:"security-contact"`
+	SupportEndDate  string `yaml:"support-end-date"`
+	CSIRTContact    string `yaml:"csirt-contact"`
+}
+
+// SupplyChainPolicy defines supply chain pinning thresholds.
+type SupplyChainPolicy struct {
+	MinPinningScore int  `yaml:"min-pinning-score"`
+	RequireSHAPins  bool `yaml:"require-sha-pins"`
+}
+
+// LicencePolicy defines licence evaluation mode and lists.
+type LicencePolicy struct {
+	Mode         string              `yaml:"mode"`
+	AllowList    []string            `yaml:"allow-list"`
+	DenyList     []string            `yaml:"deny-list"`
+	PerEcosystem map[string][]string `yaml:"per-ecosystem"`
+}
+
 // Policy defines the rules for evaluating scan results.
 type Policy struct {
 	FailOn   models.Severity `yaml:"fail_on"`
 	Ignore   []string        `yaml:"ignore"`
 	Licenses LicensePolicy   `yaml:"licenses"`
+
+	// v2 fields
+	CRA         CRAPolicy         `yaml:"cra"`
+	SupplyChain SupplyChainPolicy `yaml:"supply-chain"`
+	Licences    LicencePolicy     `yaml:"licences"`
 }
 
 // LoadPolicy reads and parses a .chainsaw.yaml policy file.
@@ -41,7 +69,32 @@ func LoadPolicy(_ context.Context, path string) (*Policy, error) {
 func DefaultPolicy() *Policy {
 	return &Policy{
 		FailOn: models.SeverityNone,
+		Licences: LicencePolicy{
+			Mode: "deny",
+		},
 	}
+}
+
+// EvaluateCRA checks a CRA result against the policy. Returns true if passing.
+func (p *Policy) EvaluateCRA(result models.CRAResult) (bool, string) {
+	if p.CRA.RequiredScore <= 0 {
+		return true, ""
+	}
+	if result.OverallScore < p.CRA.RequiredScore {
+		return false, fmt.Sprintf("CRA score %d is below required threshold %d", result.OverallScore, p.CRA.RequiredScore)
+	}
+	return true, ""
+}
+
+// EvaluateSupplyChain checks a supply chain result against the policy. Returns true if passing.
+func (p *Policy) EvaluateSupplyChain(result models.SupplyChainResult) (bool, string) {
+	if p.SupplyChain.MinPinningScore <= 0 {
+		return true, ""
+	}
+	if result.PinningScore < p.SupplyChain.MinPinningScore {
+		return false, fmt.Sprintf("pinning score %d is below required threshold %d", result.PinningScore, p.SupplyChain.MinPinningScore)
+	}
+	return true, ""
 }
 
 // Evaluate checks a scan result against the policy, returning any violations
