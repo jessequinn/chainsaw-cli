@@ -19,35 +19,58 @@ Before answering or acting, agents should:
   violations, typosquatting, and lockfile integrity issues.
 - **Primary language:** Go 1.26+ (single binary). JS/TS parsers may be
   added later for ecosystem-specific lockfile analysis.
-- **Entry points:** `main.go` (not yet created; `scan` and `sbom`
-  commands per SPEC.md).
+- **Entry points:** `cmd/chainsaw/main.go` (Cobra CLI). Commands:
+  `scan` (vulnerability + hygiene scan) and `sbom` (CycloneDX 1.5
+  generation).
 - **Key directories:**
-  - `internal/scanner/` -- scanner interface + registry, Go mod parser,
-    npm parser.
-  - `internal/vuln/` -- OSV API client, vulnerability matcher.
+  - `cmd/chainsaw/` -- CLI entry point, Cobra command tree, `version`
+    / `scan` / `sbom` subcommands.
+  - `internal/scanner/` -- scanner interface + registry, Go mod parser
+    (`gomod.go`), npm lockfile parser (`npm.go`). Self-registering via
+    `init()`.
+  - `internal/vuln/` -- OSV API client (batch queries, 30s timeout),
+    vulnerability matcher (dedup + severity sort).
+  - `internal/hygiene/` -- lockfile integrity checker (`integrity.go`),
+    typosquatting detector (`typosquat.go`, Levenshtein distance <= 2
+    against curated popular-package lists).
+  - `internal/policy/` -- YAML policy loader + evaluator
+    (`policy.go`). Reads `.chainsaw.yaml`; evaluates severity
+    threshold, CVE ignore list, licence deny list.
+  - `internal/report/` -- output formatters: `table.go` (human-
+    readable), `json.go` (indented JSON), `sarif.go` (SARIF 2.1.0).
+  - `internal/sbom/` -- CycloneDX 1.5 SBOM generator
+    (`cyclonedx.go`).
+  - `internal/config/` -- CLI config struct + defaults.
   - `pkg/models/` -- shared types (Component, Finding, ScanResult,
     Severity, Ecosystem).
+  - `openspec/` -- spec-driven development artefacts. `archive/v1-core/`
+    (implemented). Active proposals in `changes/` for v2 ecosystems.
   - `testdata/` (planned) -- fixture lockfiles, SBOMs, recorded API
     responses.
   - `docs/` (planned) -- design docs and ADRs.
-- **Output formats (per SPEC.md):** table, JSON, SARIF.
-- **Policy engine (per SPEC.md):** YAML-based `.chainsaw.yaml` with
-  `fail-on` severity threshold, CVE ignore list, licence deny list.
+- **Output formats:** table (default), JSON, SARIF 2.1.0.
+- **SBOM:** CycloneDX 1.5 JSON.
+- **Policy engine:** YAML-based `.chainsaw.yaml` with `fail-on`
+  severity threshold, CVE ignore list, licence deny list. Example
+  policy committed at repo root.
 - **Exit codes:** 0 = clean, 1 = findings/violations, 2 = execution error.
 - **Vulnerability source:** [OSV API](https://osv.dev/) with batch
   queries (max 1000 per request, 30s timeout).
-- **Spec:** see `SPEC.md` for the full v1 design.
+- **Spec:** v1 design archived at `openspec/archive/v1-core/`. Active
+  v2 proposals: Python, Elixir, Terraform, Dockerfile, Docker Compose,
+  GitHub Actions, Ansible.
 - **Licence:** TBD (recommend MIT or Apache-2.0).
 
 ## Tooling & Environment
 
 - **Go package manager:** Go modules (`go.mod` / `go.sum`).
-  Currently depends on `golang.org/x/mod` for `go.mod` parsing.
+  Dependencies: `spf13/cobra` (CLI framework), `golang.org/x/mod`
+  (`go.mod` parsing), `gopkg.in/yaml.v3` (policy file + config).
 - **JS package manager:** pnpm (preferred) or npm -- only needed if
   JS/TS parsers are added later. Currently the npm lockfile parser is
   pure Go.
 - **Install:** `go mod download`
-- **Build:** `go build -o chainsaw .`
+- **Build:** `go build -o chainsaw ./cmd/chainsaw/`
 - **Test (Go):** `go test -race -coverprofile=coverage.txt -covermode=atomic ./...`
 - **Test (JS):** `pnpm test` (vitest recommended).
 - **Lint (Go):** `golangci-lint run`
@@ -579,10 +602,15 @@ date.
   this operates on source artefacts (lockfiles, SBOMs, manifests).
 - No proprietary vulnerability database integration; use open databases
   (OSV, NVD, GitHub Advisory Database).
-- CycloneDX and SPDX SBOM generation are future scope (v2+); v1 focuses
-  on `scan` and basic `sbom` per SPEC.md.
+- SPDX SBOM generation is deferred (CycloneDX 1.5 is the v1 format).
+- NVD/CVSS enrichment beyond what OSV provides is deferred.
+- OPA-based policy engine is deferred; v1 uses simple YAML policy.
 
 ## Long-term Memory Notes
 
-- _2026-05-28_: Created AGENTS.md, opencode.json, .editorconfig, and .gitignore from canonical template in `agentic-workflows`. Project has initial code: scanner interface + registry (`internal/scanner/`), Go mod parser, npm lockfile parser, OSV API client (`internal/vuln/client.go`), matcher, and shared models (`pkg/models/`). No `main.go` or CLI entry point yet. No tests yet.
-- _2026-05-28_: Known issues in existing code: `Finding.FixedIn` vs `FixedVersion` field name mismatch between `pkg/models/models.go` and `internal/vuln/client.go`; `Severity` and `Ecosystem` typed strings may cause type mismatches with plain `string` usage in `client.go` and `matcher.go`. These likely cause compile errors and should be fixed before first build.
+- _2026-05-28_: Created AGENTS.md, opencode.json, .editorconfig, and .gitignore from canonical template in `agentic-workflows`.
+- _2026-05-28_: v1-core implemented and archived (`openspec/archive/v1-core/`). Full CLI with `scan`, `sbom`, and `version` commands. Entry point at `cmd/chainsaw/main.go`. Go mod + npm scanners, OSV client, matcher, typosquatting (Levenshtein), integrity checks, policy engine (`.chainsaw.yaml`), table/JSON/SARIF reporters, CycloneDX 1.5 SBOM generator. Dependencies: cobra, golang.org/x/mod, yaml.v3.
+- _2026-05-28_: `FixedIn`/`FixedVersion` field mismatch from initial code has been resolved (both use `FixedIn` now).
+- _2026-05-28_: **Zero `_test.go` files exist.** v1 shipped without any tests. This is technical debt: the Testing Policy mandates TDD, but no tests were written. Priority for the next sprint.
+- _2026-05-28_: **`context.Context` not propagated.** AGENTS.md mandates `context.Context` as first arg for I/O-bound functions, but the OSV client, policy loader, report writers, and SBOM generator do not accept a context. Should be retrofitted before adding more scanners.
+- _2026-05-28_: Seven v2 proposals active in `openspec/changes/`: Python, Elixir, Terraform, Dockerfile, Docker Compose, GitHub Actions, Ansible. None approved yet.
