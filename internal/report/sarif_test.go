@@ -86,6 +86,124 @@ func TestWriteSARIF_WithFindings(t *testing.T) {
 	}
 }
 
+func TestWriteSARIF_NoFindings(t *testing.T) {
+	var buf bytes.Buffer
+	result := models.ScanResult{
+		Timestamp:   time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
+		ToolVersion: "0.1.0",
+	}
+	if err := WriteSARIF(context.Background(), &buf, result); err != nil {
+		t.Fatalf("WriteSARIF error: %v", err)
+	}
+
+	var decoded sarifLog
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("invalid SARIF JSON: %v", err)
+	}
+	if len(decoded.Runs) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(decoded.Runs))
+	}
+	if len(decoded.Runs[0].Results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(decoded.Runs[0].Results))
+	}
+	if len(decoded.Runs[0].Tool.Driver.Rules) != 0 {
+		t.Errorf("expected 0 rules, got %d", len(decoded.Runs[0].Tool.Driver.Rules))
+	}
+}
+
+func TestWriteSARIF_MultipleFindingsSameRule(t *testing.T) {
+	var buf bytes.Buffer
+	result := models.ScanResult{
+		Findings: []models.Finding{
+			{
+				ID: "GHSA-DUPE", Summary: "Same vuln", Severity: models.SeverityHigh,
+				Component: models.Component{Name: "pkg-a", Version: "1.0.0", PkgURL: "pkg:npm/pkg-a@1.0.0"},
+			},
+			{
+				ID: "GHSA-DUPE", Summary: "Same vuln", Severity: models.SeverityHigh,
+				Component: models.Component{Name: "pkg-b", Version: "2.0.0", PkgURL: "pkg:npm/pkg-b@2.0.0"},
+			},
+		},
+		Timestamp:   time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
+		ToolVersion: "0.1.0",
+	}
+	if err := WriteSARIF(context.Background(), &buf, result); err != nil {
+		t.Fatalf("WriteSARIF error: %v", err)
+	}
+
+	var decoded sarifLog
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("invalid SARIF JSON: %v", err)
+	}
+	run := decoded.Runs[0]
+	if len(run.Tool.Driver.Rules) != 1 {
+		t.Errorf("expected 1 deduplicated rule, got %d", len(run.Tool.Driver.Rules))
+	}
+	if len(run.Results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(run.Results))
+	}
+	// Both results should reference rule index 0
+	for i, r := range run.Results {
+		if r.RuleIndex != 0 {
+			t.Errorf("result[%d].ruleIndex = %d, want 0", i, r.RuleIndex)
+		}
+	}
+}
+
+func TestWriteSARIF_HelpText(t *testing.T) {
+	var buf bytes.Buffer
+	result := models.ScanResult{
+		Findings: []models.Finding{{
+			ID: "GHSA-HELP", Summary: "Vuln with fix", Severity: models.SeverityHigh, FixedIn: "2.0.0",
+			Component: models.Component{Name: "my-pkg", Version: "1.0.0"},
+		}},
+		Timestamp:   time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
+		ToolVersion: "0.1.0",
+	}
+	if err := WriteSARIF(context.Background(), &buf, result); err != nil {
+		t.Fatalf("WriteSARIF error: %v", err)
+	}
+
+	var decoded sarifLog
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("invalid SARIF JSON: %v", err)
+	}
+	rule := decoded.Runs[0].Tool.Driver.Rules[0]
+	if rule.Help == nil {
+		t.Fatal("help is nil, expected remediation text")
+	}
+	if rule.Help.Text != "Upgrade my-pkg to 2.0.0." {
+		t.Errorf("help.text = %q, want %q", rule.Help.Text, "Upgrade my-pkg to 2.0.0.")
+	}
+	if rule.Help.Markdown != "Upgrade `my-pkg` to `2.0.0`." {
+		t.Errorf("help.markdown = %q, want %q", rule.Help.Markdown, "Upgrade `my-pkg` to `2.0.0`.")
+	}
+}
+
+func TestWriteSARIF_NoFixedVersion(t *testing.T) {
+	var buf bytes.Buffer
+	result := models.ScanResult{
+		Findings: []models.Finding{{
+			ID: "GHSA-NOFIX", Summary: "Vuln without fix", Severity: models.SeverityMedium,
+			Component: models.Component{Name: "old-pkg", Version: "0.1.0"},
+		}},
+		Timestamp:   time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
+		ToolVersion: "0.1.0",
+	}
+	if err := WriteSARIF(context.Background(), &buf, result); err != nil {
+		t.Fatalf("WriteSARIF error: %v", err)
+	}
+
+	var decoded sarifLog
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("invalid SARIF JSON: %v", err)
+	}
+	rule := decoded.Runs[0].Tool.Driver.Rules[0]
+	if rule.Help != nil {
+		t.Errorf("help should be nil when FixedIn is empty, got %+v", rule.Help)
+	}
+}
+
 func TestWriteSARIF_EnrichedFields(t *testing.T) {
 	var buf bytes.Buffer
 	result := models.ScanResult{
