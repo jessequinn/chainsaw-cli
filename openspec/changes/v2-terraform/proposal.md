@@ -4,6 +4,10 @@
 **Date:** 2026-05-28
 **Author:** Agent
 
+## Strategic Context
+
+> Core infrastructure supply chain proposal. Terraform providers create cloud infrastructure — a compromised provider can provision backdoored IAM roles, network rules, or storage. No existing tool treats Terraform providers as supply chain components with pinning analysis and provenance checks. Feeds directly into v2-infra-supply-chain analysis and CRA Annex I Part 2(1) component identification. Priority: HIGH.
+
 ## Summary
 
 Add Terraform provider and module scanning to chainsaw. Parse

@@ -4,6 +4,10 @@
 **Date:** 2026-05-28
 **Author:** Agent
 
+## Strategic Context
+
+> Python is the highest-ROI application ecosystem to add. Large CRA-relevant attack surface (IoT, industrial, automotive sectors run Python). Full OSV coverage. Adds breadth without diluting the CRA/infrastructure positioning. Priority: HIGH — implement alongside CRA engine.
+
 ## Summary
 
 Add Python ecosystem scanning to chainsaw. Parse pip, Poetry, and Pipenv

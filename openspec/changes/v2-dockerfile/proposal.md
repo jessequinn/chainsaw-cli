@@ -4,6 +4,10 @@
 **Date:** 2026-05-28
 **Author:** Agent
 
+## Strategic Context
+
+> Infrastructure supply chain depth for the container layer. Base images are foundational — a compromised base image affects every container built from it. Digest pinning is the Docker equivalent of SHA pinning for GitHub Actions. CRA Annex I Part 2(1) requires identifying all components, including base OS images in containers. Priority: HIGH.
+
 ## Summary
 
 Add Dockerfile base image scanning to chainsaw. Parse `FROM` directives

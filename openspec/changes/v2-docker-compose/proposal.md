@@ -4,6 +4,10 @@
 **Date:** 2026-05-28
 **Author:** Agent
 
+## Strategic Context
+
+> Complements v2-dockerfile for multi-service architectures. Compose files reference images not visible in Dockerfiles (databases, caches, sidecars, monitoring). Lower priority than Dockerfile scanning since it shares the same docker ecosystem and image parsing logic. Priority: MEDIUM — implement after v2-dockerfile.
+
 ## Summary
 
 Add Docker Compose service image scanning to chainsaw. Parse

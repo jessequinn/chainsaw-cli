@@ -4,6 +4,10 @@
 **Date:** 2026-05-28
 **Author:** Agent
 
+## Strategic Context
+
+> Infrastructure supply chain depth. Ansible collections execute arbitrary code on target systems — configuration management is a high-privilege supply chain surface. Galaxy has no lockfile, no integrity hashes, no vuln database — making hygiene checks (pinning enforcement) more valuable than vuln matching. Supports CRA Annex I Part 2(1) for organizations using Ansible in product delivery. Priority: MEDIUM.
+
 ## Summary
 
 Add Ansible Galaxy collection and role scanning to chainsaw. Parse

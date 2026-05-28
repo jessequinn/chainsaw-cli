@@ -4,6 +4,10 @@
 **Date:** 2026-05-28
 **Author:** Agent
 
+## Strategic Context
+
+> Elixir serves niche but CRA-relevant sectors (telecom, embedded systems). Low implementation effort (simple lockfile format). However, small ecosystem with limited OSV coverage. Priority: LOW — implement only if user demand materializes. Does not contribute to either differentiation axis.
+
 ## Summary
 
 Add Elixir/Erlang ecosystem scanning to chainsaw. Parse `mix.lock` to

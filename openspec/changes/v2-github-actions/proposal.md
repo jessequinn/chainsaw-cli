@@ -4,6 +4,10 @@
 **Date:** 2026-05-28
 **Author:** Agent
 
+## Strategic Context
+
+> THE highest-impact infrastructure supply chain proposal. GitHub Actions run with repository secrets, deployment credentials, and write access. Tag-pinned actions are a proven, actively exploited attack vector (tj-actions 2024, Megalodon 2026). SHA pinning enforcement is the single most valuable hygiene check chainsaw can add. Feeds directly into v2-infra-supply-chain blast radius analysis (actions with secrets access = critical blast radius). Priority: CRITICAL — implement first among infrastructure scanners.
+
 ## Summary
 
 Add GitHub Actions workflow scanning to chainsaw. Parse workflow YAML
