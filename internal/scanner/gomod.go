@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ func (g *GoScanner) Ecosystem() models.Ecosystem {
 
 // DetectManifests walks root and returns paths to go.mod files, skipping
 // vendor/ directories.
-func (g *GoScanner) DetectManifests(root string) ([]string, error) {
+func (g *GoScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	var manifests []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -45,7 +46,7 @@ func (g *GoScanner) DetectManifests(root string) ([]string, error) {
 // ParseDependencies reads a go.mod file and returns one Component per
 // non-indirect require directive. It also attempts to read go.sum from the
 // same directory to populate hash values.
-func (g *GoScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (g *GoScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("read go.mod: %w", err)

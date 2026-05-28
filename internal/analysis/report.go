@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 )
 
 // WriteSupplyChainReport writes a human-readable supply chain analysis.
-func WriteSupplyChainReport(w io.Writer, result models.SupplyChainResult) error {
+func WriteSupplyChainReport(_ context.Context, w io.Writer, result models.SupplyChainResult) error {
 	// Header
 	fmt.Fprintf(w, "Supply Chain Analysis -- %s\n", result.Timestamp.Format("2006-01-02 15:04:05"))
 	fmt.Fprintf(w, "Tool version: %s\n\n", result.ToolVersion)
@@ -101,7 +102,7 @@ func WriteSupplyChainReport(w io.Writer, result models.SupplyChainResult) error 
 }
 
 // WriteSupplyChainJSON writes machine-readable JSON output.
-func WriteSupplyChainJSON(w io.Writer, result models.SupplyChainResult) error {
+func WriteSupplyChainJSON(_ context.Context, w io.Writer, result models.SupplyChainResult) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)

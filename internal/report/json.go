@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,7 @@ import (
 )
 
 // WriteJSON writes scan results as indented JSON to w.
-func WriteJSON(w io.Writer, result models.ScanResult) error {
+func WriteJSON(_ context.Context, w io.Writer, result models.ScanResult) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(result); err != nil {

@@ -1,6 +1,7 @@
 package vuln
 
 import (
+	"context"
 	"sort"
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
@@ -26,8 +27,8 @@ func NewMatcher(client *Client) *Matcher {
 
 // Match queries OSV for the given components, deduplicates findings, and
 // returns them sorted by severity (CRITICAL first), then by ID.
-func (m *Matcher) Match(components []models.Component) ([]models.Finding, error) {
-	findings, err := m.client.QueryBatch(components)
+func (m *Matcher) Match(ctx context.Context, components []models.Component) ([]models.Finding, error) {
+	findings, err := m.client.QueryBatch(ctx, components)
 	if err != nil {
 		return nil, err
 	}

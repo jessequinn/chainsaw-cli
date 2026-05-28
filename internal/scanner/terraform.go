@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func (t *TerraformScanner) Ecosystem() models.Ecosystem {
 
 // DetectManifests walks root and returns paths to .terraform.lock.hcl files,
 // skipping .terraform/ directories.
-func (t *TerraformScanner) DetectManifests(root string) ([]string, error) {
+func (t *TerraformScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	var manifests []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -48,7 +49,7 @@ var (
 
 // ParseDependencies parses a .terraform.lock.hcl file using regex and
 // returns components for each provider block.
-func (t *TerraformScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (t *TerraformScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", manifestPath, err)

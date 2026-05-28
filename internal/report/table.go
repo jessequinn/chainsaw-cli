@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -19,7 +20,7 @@ func truncate(s string, maxLen int) string {
 }
 
 // WriteTable writes scan results as a formatted plain-text table to w.
-func WriteTable(w io.Writer, result models.ScanResult) error {
+func WriteTable(_ context.Context, w io.Writer, result models.ScanResult) error {
 	if _, err := fmt.Fprintf(w, "Chainsaw Scan Results  %s\n", result.Timestamp.Format("2006-01-02 15:04:05 MST")); err != nil {
 		return fmt.Errorf("writing header: %w", err)
 	}

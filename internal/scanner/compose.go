@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func (c *ComposeScanner) Ecosystem() models.Ecosystem {
 
 // DetectManifests walks root and returns paths to docker-compose YAML files,
 // skipping .git/ and node_modules/ directories.
-func (c *ComposeScanner) DetectManifests(root string) ([]string, error) {
+func (c *ComposeScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	var manifests []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -62,7 +63,7 @@ type composeService struct {
 
 // ParseDependencies parses a docker-compose file and returns components
 // for each service that specifies an image.
-func (c *ComposeScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (c *ComposeScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", manifestPath, err)

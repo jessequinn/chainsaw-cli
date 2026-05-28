@@ -2,6 +2,7 @@ package vuln
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -86,7 +87,7 @@ func NewClient() *Client {
 }
 
 // QueryBatch looks up vulnerabilities for the given components via OSV.
-func (c *Client) QueryBatch(components []models.Component) ([]models.Finding, error) {
+func (c *Client) QueryBatch(ctx context.Context, components []models.Component) ([]models.Finding, error) {
 	if len(components) == 0 {
 		return nil, nil
 	}
@@ -100,7 +101,7 @@ func (c *Client) QueryBatch(components []models.Component) ([]models.Finding, er
 		}
 		batch := components[start:end]
 
-		findings, err := c.queryBatch(batch)
+		findings, err := c.queryBatch(ctx, batch)
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +111,7 @@ func (c *Client) QueryBatch(components []models.Component) ([]models.Finding, er
 	return allFindings, nil
 }
 
-func (c *Client) queryBatch(components []models.Component) ([]models.Finding, error) {
+func (c *Client) queryBatch(ctx context.Context, components []models.Component) ([]models.Finding, error) {
 	// Filter components to only those with known OSV ecosystems
 	var validComponents []models.Component
 	var componentIndices []int
@@ -141,7 +142,13 @@ func (c *Client) queryBatch(components []models.Component) ([]models.Finding, er
 		return nil, fmt.Errorf("marshal osv request: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(osvAPIURL, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, osvAPIURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating osv request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("osv query: %w", err)
 	}

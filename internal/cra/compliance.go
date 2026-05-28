@@ -1,6 +1,7 @@
 package cra
 
 import (
+	"context"
 	"time"
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
@@ -34,7 +35,7 @@ type CRAConfig struct {
 }
 
 // Assess runs all CRA compliance checks and returns the aggregated result.
-func Assess(ctx *AssessmentContext) models.CRAResult {
+func Assess(_ context.Context, actx *AssessmentContext) models.CRAResult {
 	checkers := []Checker{
 		&SBOMChecker{},
 		&VulnChecker{},
@@ -46,7 +47,7 @@ func Assess(ctx *AssessmentContext) models.CRAResult {
 
 	var checks []models.CRACheck
 	for _, c := range checkers {
-		checks = append(checks, c.Check(ctx)...)
+		checks = append(checks, c.Check(actx)...)
 	}
 
 	passing := 0
@@ -68,11 +69,11 @@ func Assess(ctx *AssessmentContext) models.CRAResult {
 
 	productName := "unknown"
 	productVersion := ""
-	if ctx.Config != nil {
-		if ctx.Config.ProductName != "" {
-			productName = ctx.Config.ProductName
+	if actx.Config != nil {
+		if actx.Config.ProductName != "" {
+			productName = actx.Config.ProductName
 		}
-		productVersion = ctx.Config.ProductVersion
+		productVersion = actx.Config.ProductVersion
 	}
 
 	return models.CRAResult{

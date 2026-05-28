@@ -1,6 +1,7 @@
 package report
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -82,7 +83,7 @@ func severityToSARIFLevel(s models.Severity) string {
 }
 
 // WriteSARIF writes scan results in SARIF 2.1.0 format to w.
-func WriteSARIF(w io.Writer, result models.ScanResult) error {
+func WriteSARIF(_ context.Context, w io.Writer, result models.ScanResult) error {
 	allFindings := make([]models.Finding, 0, len(result.Findings)+len(result.Hygiene))
 	allFindings = append(allFindings, result.Findings...)
 	allFindings = append(allFindings, result.Hygiene...)

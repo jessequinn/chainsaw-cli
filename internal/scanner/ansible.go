@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func (a *AnsibleScanner) Ecosystem() models.Ecosystem {
 
 // DetectManifests walks root and returns paths to Ansible requirements.yml
 // files, skipping .ansible/ and molecule/ directories.
-func (a *AnsibleScanner) DetectManifests(root string) ([]string, error) {
+func (a *AnsibleScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	var manifests []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -57,7 +58,7 @@ type ansibleEntry struct {
 
 // ParseDependencies parses an Ansible requirements.yml and returns
 // components for each collection and role.
-func (a *AnsibleScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (a *AnsibleScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", manifestPath, err)

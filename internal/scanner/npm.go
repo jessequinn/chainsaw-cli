@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,7 +24,7 @@ func (n *NpmScanner) Ecosystem() models.Ecosystem {
 
 // DetectManifests walks root and returns paths to package-lock.json files,
 // skipping node_modules/ directories.
-func (n *NpmScanner) DetectManifests(root string) ([]string, error) {
+func (n *NpmScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	var manifests []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -54,7 +55,7 @@ type npmPackage struct {
 
 // ParseDependencies reads a package-lock.json (lockfileVersion 2 or 3) and
 // returns one Component per entry in the "packages" map.
-func (n *NpmScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (n *NpmScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("read package-lock.json: %w", err)

@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ var dockerfilePattern = regexp.MustCompile(
 	`^(Dockerfile(\..*)?|.*\.dockerfile)$`,
 )
 
-func (d *DockerfileScanner) DetectManifests(root string) ([]string, error) {
+func (d *DockerfileScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	var manifests []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -60,7 +61,7 @@ var fromLine = regexp.MustCompile(`(?i)^FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+
 // argVarPattern detects unresolved ${...} ARG variables.
 var argVarPattern = regexp.MustCompile(`\$\{[^}]+\}`)
 
-func (d *DockerfileScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (d *DockerfileScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	f, err := os.Open(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("open Dockerfile: %w", err)

@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -10,8 +11,8 @@ import (
 // Scanner detects and parses dependency manifests for a specific ecosystem.
 type Scanner interface {
 	Ecosystem() models.Ecosystem
-	DetectManifests(root string) ([]string, error)
-	ParseDependencies(manifestPath string) ([]models.Component, error)
+	DetectManifests(ctx context.Context, root string) ([]string, error)
+	ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error)
 }
 
 var (
@@ -49,7 +50,7 @@ func GetByEcosystem(eco models.Ecosystem) (Scanner, bool) {
 
 // DetectAll runs every registered scanner against root and returns a
 // deduplicated list of components.
-func DetectAll(root string) ([]models.Component, error) {
+func DetectAll(ctx context.Context, root string) ([]models.Component, error) {
 	mu.RLock()
 	all := make([]Scanner, len(scanners))
 	copy(all, scanners)
@@ -59,12 +60,12 @@ func DetectAll(root string) ([]models.Component, error) {
 	var components []models.Component
 
 	for _, s := range all {
-		manifests, err := s.DetectManifests(root)
+		manifests, err := s.DetectManifests(ctx, root)
 		if err != nil {
 			return nil, fmt.Errorf("detect manifests (%s): %w", s.Ecosystem(), err)
 		}
 		for _, m := range manifests {
-			deps, err := s.ParseDependencies(m)
+			deps, err := s.ParseDependencies(ctx, m)
 			if err != nil {
 				return nil, fmt.Errorf("parse %s: %w", m, err)
 			}

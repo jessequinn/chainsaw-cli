@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -22,7 +23,7 @@ type Policy struct {
 }
 
 // LoadPolicy reads and parses a .chainsaw.yaml policy file.
-func LoadPolicy(path string) (*Policy, error) {
+func LoadPolicy(_ context.Context, path string) (*Policy, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading policy file: %w", err)

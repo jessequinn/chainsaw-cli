@@ -1,6 +1,7 @@
 package cra
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +11,7 @@ import (
 )
 
 // WriteComplianceReport writes a human-readable CRA compliance report.
-func WriteComplianceReport(w io.Writer, result models.CRAResult) error {
+func WriteComplianceReport(_ context.Context, w io.Writer, result models.CRAResult) error {
 	fmt.Fprintf(w, "CRA Compliance Assessment -- %s\n", result.Date.Format("2006-01-02"))
 	fmt.Fprintf(w, "Regulation: %s\n", result.Regulation)
 	fmt.Fprintln(w, "")
@@ -84,7 +85,7 @@ func WriteComplianceReport(w io.Writer, result models.CRAResult) error {
 }
 
 // WriteComplianceJSON writes the CRA result as indented JSON.
-func WriteComplianceJSON(w io.Writer, result models.CRAResult) error {
+func WriteComplianceJSON(_ context.Context, w io.Writer, result models.CRAResult) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)

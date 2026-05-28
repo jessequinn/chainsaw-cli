@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func (g *GitHubActionsScanner) Ecosystem() models.Ecosystem {
 	return models.EcosystemGitHubActions
 }
 
-func (g *GitHubActionsScanner) DetectManifests(root string) ([]string, error) {
+func (g *GitHubActionsScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	workflowDir := filepath.Join(root, ".github", "workflows")
 	info, err := os.Stat(workflowDir)
 	if err != nil || !info.IsDir() {
@@ -66,7 +67,7 @@ var commitSHAPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 // versionTagPattern matches vN or vN.N.N style tags.
 var versionTagPattern = regexp.MustCompile(`^v\d+(\.\d+)*$`)
 
-func (g *GitHubActionsScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (g *GitHubActionsScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("read workflow file: %w", err)

@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -39,7 +40,7 @@ var pythonManifests = map[string]bool{
 	"poetry.lock":      true,
 }
 
-func (p *PythonScanner) DetectManifests(root string) ([]string, error) {
+func (p *PythonScanner) DetectManifests(ctx context.Context, root string) ([]string, error) {
 	var manifests []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -59,7 +60,7 @@ func (p *PythonScanner) DetectManifests(root string) ([]string, error) {
 	return manifests, err
 }
 
-func (p *PythonScanner) ParseDependencies(manifestPath string) ([]models.Component, error) {
+func (p *PythonScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	base := filepath.Base(manifestPath)
 	switch base {
 	case "requirements.txt":
