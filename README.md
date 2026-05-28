@@ -23,12 +23,21 @@ goes further:
   provenance checks, and blast radius scoring.
 
 - **Application dependency scanning** -- vulnerability matching against
-  OSV for Go, npm, and Python ecosystems with typosquatting detection
-  and lockfile integrity verification.
+  OSV and Go vulnerability database for Go, npm, Python, and Elixir
+  ecosystems with typosquatting detection and lockfile integrity verification.
 
 - **Policy enforcement** -- YAML-based policy engine with severity
   thresholds, CVE ignore lists, and licence deny lists. Breaks builds
   when policy is violated.
+
+- **Licence detection** -- resolves actual licences from npm and PyPI
+  registries with allow/deny policy evaluation.
+
+- **Scan diffing** -- compares scan results between runs to surface
+  new/fixed vulnerabilities and component changes for PR workflows.
+
+- **Security scaffolding** -- generates SECURITY.md, security.txt
+  (RFC 9116), and CI workflow templates to bootstrap CRA compliance.
 
 - **SBOM generation** -- CycloneDX 1.5 SBOMs covering application and
   infrastructure components.
@@ -80,15 +89,38 @@ chainsaw sbom .                              # CycloneDX 1.5 JSON to stdout
 chainsaw sbom --format cyclonedx .           # explicit format
 ```
 
+### Compare scan results
+
+```sh
+chainsaw diff --base main.json --head pr.json        # table output
+chainsaw diff --base main.json --head pr.json --format markdown  # for PR comments
+chainsaw diff --base main.json --head pr.json --fail-on high     # CI gate
+```
+
+### Scaffold security files
+
+```sh
+chainsaw init-security .                             # SECURITY.md + security.txt + .chainsaw.yaml
+chainsaw init-security --org "My Company" --email security@example.com .
+```
+
+### Generate CI workflow
+
+```sh
+chainsaw init-ci .                                   # .github/workflows/chainsaw.yml
+chainsaw init-ci --fail-on critical --go-version 1.22 .
+```
+
 ## Supported Ecosystems
 
 ### Application Dependencies
 
 | Ecosystem | Manifest | Vulnerability Data |
 |-----------|----------|-------------------|
-| Go | `go.mod` / `go.sum` | OSV (Go) |
+| Go | `go.mod` / `go.sum` | OSV (Go) + Go Vuln DB |
 | npm | `package-lock.json` | OSV (npm) |
 | Python | `requirements.txt`, `Pipfile.lock`, `poetry.lock` | OSV (PyPI) |
+| Elixir | `mix.lock` | OSV (Hex) |
 
 ### Infrastructure Supply Chain
 
@@ -141,6 +173,12 @@ cra:
   security-contact: "security@mycompany.eu"
 ```
 
+Enable licence detection with `--detect-licences` on the `scan` command:
+
+```sh
+chainsaw scan --detect-licences .
+```
+
 ## Exit Codes
 
 | Code | Meaning |
@@ -156,11 +194,13 @@ engine** that uses vulnerability scanning as one input among several.
 
 | Capability | Trivy | Grype | osv-scanner | **Chainsaw** |
 |------------|-------|-------|-------------|-------------|
-| Application SCA | 20+ ecosystems | SBOM-driven | OSV-native | Go, npm, Python |
+| Application SCA | 20+ ecosystems | SBOM-driven | OSV-native | Go, npm, Python, Elixir |
 | CRA compliance | No | No | No | **Core feature** |
 | Infra supply chain | IaC misconfig | No | No | **Pinning + provenance** |
 | CI/CD supply chain | No | No | No | **GH Actions analysis** |
 | Policy enforcement | No | No | No | **YAML + CRA** |
+| Licence detection | No | No | No | **npm + PyPI registries** |
+| Scan diffing | No | No | No | **diff command** |
 | SBOM generation | CycloneDX, SPDX | Syft | No | CycloneDX 1.5 |
 
 Chainsaw does not compete on ecosystem breadth. Use Trivy if you need
@@ -172,4 +212,4 @@ See `AGENTS.md` for development guidelines.
 
 ## Licence
 
-TBD
+Apache-2.0. See [LICENSE](LICENSE).

@@ -14,3 +14,15 @@ policy:
       - GPL-3.0-only
       - AGPL-3.0-only
       - AGPL-3.0-or-later
+
+# CRA compliance configuration
+cra:
+  manufacturer: "chainsaw-dev"
+  security-contact: "security@example.com"
+  support-end-date: "2028-05-28"
+  csirt-contact: "security@example.com"
+
+# Supply chain policy
+supply-chain:
+  min-pinning-score: 0
+  require-sha-pins: false
