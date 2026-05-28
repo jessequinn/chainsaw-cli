@@ -1,0 +1,6 @@
+%{
+  "castore": {:hex, :castore, "1.0.4", "ff4dedf6c81c7e9f355d3bde1f38c27b7e2f4454d0a1a963e3033180729f87f9", [:mix], [], "hexpm", "abc123"},
+  "phoenix": {:hex, :phoenix, "1.7.10", "02189140a61b2ce85bb633a9b6fd02dfa64590c51c4bcf3e468a3112a44a9b38", [:mix], [{:castore, "~> 1.0", [hex: :castore]}], "hexpm", "def456"},
+  "ecto_sql": {:hex, :ecto_sql, "3.11.1", "4be357c0c300d84bee7aa7e3e4c09e0838fe68e0f5e78e0bc4b4393fea13b7ab", [:mix], [], "hexpm", "ghi789"},
+  "some_git_dep": {:git, "https://github.com/user/repo.git", "abc123def456", []},
+}

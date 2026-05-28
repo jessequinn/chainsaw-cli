@@ -85,3 +85,67 @@ func TestWriteSARIF_WithFindings(t *testing.T) {
 		t.Errorf("MEDIUM severity should map to SARIF level 'warning', got %q", run.Results[1].Level)
 	}
 }
+
+func TestWriteSARIF_EnrichedFields(t *testing.T) {
+	var buf bytes.Buffer
+	result := models.ScanResult{
+		Findings: []models.Finding{{
+			ID:       "GHSA-ENRICH",
+			Summary:  "Enriched vuln",
+			Details:  "A detailed description of the vulnerability.",
+			Severity: models.SeverityCritical,
+			FixedIn:  "2.0.0",
+			Component: models.Component{
+				Name:    "example-pkg",
+				Version: "1.0.0",
+				PkgURL:  "pkg:npm/example-pkg@1.0.0",
+			},
+		}},
+		Timestamp:   time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC),
+		ToolVersion: "0.2.0",
+	}
+	if err := WriteSARIF(context.Background(), &buf, result); err != nil {
+		t.Fatalf("WriteSARIF error: %v", err)
+	}
+
+	var decoded sarifLog
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("output is not valid SARIF JSON: %v", err)
+	}
+
+	run := decoded.Runs[0]
+	driver := run.Tool.Driver
+
+	// Tool metadata
+	if driver.InformationURI != "https://github.com/chainsaw-dev/chainsaw" {
+		t.Errorf("informationUri = %q, want GitHub URL", driver.InformationURI)
+	}
+	if driver.SemanticVersion != "0.2.0" {
+		t.Errorf("semanticVersion = %q, want %q", driver.SemanticVersion, "0.2.0")
+	}
+
+	// Rule enrichments
+	if len(driver.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(driver.Rules))
+	}
+	rule := driver.Rules[0]
+	if rule.HelpURI != "https://osv.dev/vulnerability/GHSA-ENRICH" {
+		t.Errorf("helpUri = %q, want OSV URL", rule.HelpURI)
+	}
+	if rule.Help == nil {
+		t.Fatal("help is nil, expected remediation guidance")
+	}
+	if rule.Help.Markdown == "" {
+		t.Error("help.markdown is empty")
+	}
+
+	// Result enrichments
+	r := run.Results[0]
+	if r.Message.Markdown == "" {
+		t.Error("result message.markdown is empty")
+	}
+	fp, ok := r.Fingerprints["primaryLocationLineHash"]
+	if !ok || fp == "" {
+		t.Error("fingerprints.primaryLocationLineHash missing or empty")
+	}
+}

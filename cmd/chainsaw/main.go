@@ -11,7 +11,9 @@ import (
 
 	"github.com/chainsaw-dev/chainsaw/internal/analysis"
 	"github.com/chainsaw-dev/chainsaw/internal/cra"
+	"github.com/chainsaw-dev/chainsaw/internal/diff"
 	"github.com/chainsaw-dev/chainsaw/internal/hygiene"
+	"github.com/chainsaw-dev/chainsaw/internal/licence"
 	"github.com/chainsaw-dev/chainsaw/internal/initcmd"
 	"github.com/chainsaw-dev/chainsaw/internal/policy"
 	"github.com/chainsaw-dev/chainsaw/internal/report"
@@ -45,8 +47,73 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(supplyChainCmd())
 	root.AddCommand(initSecurityCmd())
 	root.AddCommand(initCICmd())
+	root.AddCommand(diffCmd())
 
 	return root
+}
+
+func diffCmd() *cobra.Command {
+	var (
+		basePath string
+		headPath string
+		format   string
+		failOn   string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "diff",
+		Short: "Compare two scan results to show changes",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+
+			base, err := diff.LoadScanResult(basePath)
+			if err != nil {
+				return fmt.Errorf("loading base scan: %w", err)
+			}
+
+			head, err := diff.LoadScanResult(headPath)
+			if err != nil {
+				return fmt.Errorf("loading head scan: %w", err)
+			}
+
+			result := diff.Compare(base, head)
+
+			switch format {
+			case "json":
+				if err := diff.WriteDiffJSON(ctx, os.Stdout, result); err != nil {
+					return err
+				}
+			case "markdown":
+				if err := diff.WriteDiffMarkdown(ctx, os.Stdout, result); err != nil {
+					return err
+				}
+			default:
+				if err := diff.WriteDiffReport(ctx, os.Stdout, result); err != nil {
+					return err
+				}
+			}
+
+			if failOn != "" {
+				threshold := models.ParseSeverity(failOn)
+				for _, f := range result.NewVulnerabilities {
+					if models.SeverityRank(f.Severity) >= models.SeverityRank(threshold) {
+						os.Exit(1)
+					}
+				}
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&basePath, "base", "", "Path to base scan JSON file (required)")
+	cmd.Flags().StringVar(&headPath, "head", "", "Path to head scan JSON file (required)")
+	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json, markdown")
+	cmd.Flags().StringVar(&failOn, "fail-on", "", "Severity threshold for new vulnerabilities to trigger exit code 1")
+	_ = cmd.MarkFlagRequired("base")
+	_ = cmd.MarkFlagRequired("head")
+
+	return cmd
 }
 
 func initCICmd() *cobra.Command {
@@ -104,10 +171,11 @@ func initCICmd() *cobra.Command {
 
 func scanCmd() *cobra.Command {
 	var (
-		format     string
-		failOn     string
-		ecosystem  string
-		policyPath string
+		format         string
+		failOn         string
+		ecosystem      string
+		policyPath     string
+		detectLicences bool
 	)
 
 	cmd := &cobra.Command{
@@ -167,6 +235,21 @@ func scanCmd() *cobra.Command {
 			hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
 			hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
 
+			// Licence detection (optional).
+			if detectLicences {
+				det := licence.NewDetector()
+				if _, err := det.DetectAll(ctx, components); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+				}
+				licFindings := licence.EvaluateLicences(
+					components,
+					pol.Licences.Mode,
+					pol.Licences.AllowList,
+					pol.Licences.DenyList,
+				)
+				hygieneFindings = append(hygieneFindings, licFindings...)
+			}
+
 			result := models.ScanResult{
 				Components:  components,
 				Findings:    findings,
@@ -194,6 +277,7 @@ func scanCmd() *cobra.Command {
 	cmd.Flags().StringVar(&failOn, "fail-on", "", "Minimum severity to fail on (CRITICAL, HIGH, MEDIUM, LOW)")
 	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Comma-separated ecosystems to scan (e.g. go,npm)")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
+	cmd.Flags().BoolVar(&detectLicences, "detect-licences", false, "Detect licences for dependencies via registry APIs")
 
 	return cmd
 }

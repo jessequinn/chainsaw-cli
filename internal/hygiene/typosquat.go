@@ -91,6 +91,13 @@ var popularAnsible = []string{
 	"kubernetes.core", "ansible.windows", "community.vmware",
 }
 
+var popularHex = []string{
+	"phoenix", "ecto", "plug", "phoenix_html", "phoenix_live_view",
+	"jason", "telemetry", "phoenix_pubsub", "swoosh", "bamboo",
+	"ex_machina", "credo", "dialyxir", "absinthe", "guardian",
+	"httpoison", "tesla", "oban", "broadway", "nx",
+}
+
 // levenshtein computes the Levenshtein edit distance between two strings.
 func levenshtein(a, b string) int {
 	la := len(a)
@@ -154,6 +161,8 @@ func popularListForEcosystem(eco models.Ecosystem) []string {
 		return popularTerraform
 	case models.EcosystemAnsible:
 		return popularAnsible
+	case models.EcosystemHex:
+		return popularHex
 	default:
 		return nil
 	}

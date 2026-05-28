@@ -2,6 +2,7 @@ package report
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,16 +31,20 @@ type sarifTool struct {
 }
 
 type sarifDriver struct {
-	Name    string      `json:"name"`
-	Version string      `json:"version"`
-	Rules   []sarifRule `json:"rules"`
+	Name            string      `json:"name"`
+	Version         string      `json:"version"`
+	SemanticVersion string      `json:"semanticVersion,omitempty"`
+	InformationURI  string      `json:"informationUri,omitempty"`
+	Rules           []sarifRule `json:"rules"`
 }
 
 type sarifRule struct {
-	ID                   string              `json:"id"`
-	ShortDescription     sarifMessage        `json:"shortDescription"`
-	FullDescription      sarifMessage        `json:"fullDescription"`
-	DefaultConfiguration sarifConfiguration  `json:"defaultConfiguration"`
+	ID                   string             `json:"id"`
+	ShortDescription     sarifMessage       `json:"shortDescription"`
+	FullDescription      sarifMessage       `json:"fullDescription"`
+	HelpURI              string             `json:"helpUri,omitempty"`
+	Help                 *sarifMessage      `json:"help,omitempty"`
+	DefaultConfiguration sarifConfiguration `json:"defaultConfiguration"`
 }
 
 type sarifConfiguration struct {
@@ -47,15 +52,17 @@ type sarifConfiguration struct {
 }
 
 type sarifMessage struct {
-	Text string `json:"text"`
+	Text     string `json:"text"`
+	Markdown string `json:"markdown,omitempty"`
 }
 
 type sarifResult struct {
-	RuleID    string          `json:"ruleId"`
-	RuleIndex int             `json:"ruleIndex"`
-	Level     string          `json:"level"`
-	Message   sarifMessage    `json:"message"`
-	Locations []sarifLocation `json:"locations,omitempty"`
+	RuleID       string            `json:"ruleId"`
+	RuleIndex    int               `json:"ruleIndex"`
+	Level        string            `json:"level"`
+	Message      sarifMessage      `json:"message"`
+	Locations    []sarifLocation   `json:"locations,omitempty"`
+	Fingerprints map[string]string `json:"fingerprints,omitempty"`
 }
 
 type sarifLocation struct {
@@ -103,26 +110,41 @@ func WriteSARIF(_ context.Context, w io.Writer, result models.ScanResult) error 
 			full = f.Summary
 		}
 
-		rules = append(rules, sarifRule{
+		rule := sarifRule{
 			ID:               f.ID,
 			ShortDescription: sarifMessage{Text: short},
 			FullDescription:  sarifMessage{Text: full},
+			HelpURI:          fmt.Sprintf("https://osv.dev/vulnerability/%s", f.ID),
 			DefaultConfiguration: sarifConfiguration{
 				Level: severityToSARIFLevel(f.Severity),
 			},
-		})
+		}
+
+		if f.FixedIn != "" {
+			helpText := fmt.Sprintf("Upgrade %s to %s.", f.Component.Name, f.FixedIn)
+			helpMD := fmt.Sprintf("Upgrade `%s` to `%s`.", f.Component.Name, f.FixedIn)
+			rule.Help = &sarifMessage{Text: helpText, Markdown: helpMD}
+		}
+
+		rules = append(rules, rule)
 	}
 
 	results := make([]sarifResult, 0, len(allFindings))
 	for _, f := range allFindings {
 		idx := ruleIndex[f.ID]
-		msg := fmt.Sprintf("%s %s@%s: %s", f.Severity, f.Component.Name, f.Component.Version, f.Summary)
+		msgText := fmt.Sprintf("%s %s@%s: %s", f.Severity, f.Component.Name, f.Component.Version, f.Summary)
+		msgMD := fmt.Sprintf("**%s** `%s@%s`: %s", f.Severity, f.Component.Name, f.Component.Version, f.Summary)
+
+		fpHash := sha256.Sum256([]byte(f.Component.Name + "|" + f.Component.Version + "|" + f.ID))
 
 		r := sarifResult{
 			RuleID:    f.ID,
 			RuleIndex: idx,
 			Level:     severityToSARIFLevel(f.Severity),
-			Message:   sarifMessage{Text: msg},
+			Message:   sarifMessage{Text: msgText, Markdown: msgMD},
+			Fingerprints: map[string]string{
+				"primaryLocationLineHash": fmt.Sprintf("%x", fpHash),
+			},
 		}
 
 		if f.Component.PkgURL != "" {
@@ -144,9 +166,11 @@ func WriteSARIF(_ context.Context, w io.Writer, result models.ScanResult) error 
 		Runs: []sarifRun{{
 			Tool: sarifTool{
 				Driver: sarifDriver{
-					Name:    "chainsaw",
-					Version: result.ToolVersion,
-					Rules:   rules,
+					Name:            "chainsaw",
+					Version:         result.ToolVersion,
+					SemanticVersion: result.ToolVersion,
+					InformationURI:  "https://github.com/chainsaw-dev/chainsaw",
+					Rules:           rules,
 				},
 			},
 			Results: results,
