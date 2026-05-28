@@ -6,6 +6,47 @@ The format is based on [Common Changelog](https://common-changelog.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-28
+
+### Added
+
+Add `chainsaw init-security` command scaffolding SECURITY.md,
+`.well-known/security.txt` (RFC 9116), and `.chainsaw.yaml` CRA
+section with coordinated disclosure template
+
+Add `chainsaw init-ci` command generating GitHub Actions workflow
+with SARIF upload, CRA compliance check, and supply chain analysis
+
+Add `chainsaw diff` command comparing two JSON scan results showing
+new/fixed vulnerabilities, added/removed components, with table,
+JSON, and markdown output formats
+
+Add Elixir/Hex scanner parsing `mix.lock` with SHA-256 integrity
+hashes and popular Hex typosquatting list
+
+Add licence detection via npm registry and PyPI JSON API with
+caching, allow/deny policy evaluation, and `--detect-licences`
+flag on scan command
+
+Add Go vulnerability database integration alongside OSV for Go
+modules with version range checking via `golang.org/x/mod/semver`
+
+Add enhanced policy engine with CRA required-score threshold,
+supply chain min-pinning-score, require-sha-pins, and licence
+allow/deny mode with per-ecosystem overrides
+
+Add SARIF enrichment: helpUri (OSV links), remediation text,
+informationUri, semanticVersion, fingerprints for cross-run
+deduplication, and markdown messages
+
+Add comprehensive test suite across all packages: scanner,
+vulnerability client/matcher, policy engine, hygiene checks,
+report formatters, CRA compliance, and supply chain analysis
+
+Propagate `context.Context` to all I/O-bound functions: Scanner
+interface, OSV client, vulnerability matcher, policy loader,
+report writers, CRA engine, and supply chain analysis
+
 ## [0.2.0] - 2026-05-28
 
 ### Added

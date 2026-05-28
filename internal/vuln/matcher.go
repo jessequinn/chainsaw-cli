@@ -15,23 +15,34 @@ var severityOrder = map[models.Severity]int{
 	"UNKNOWN":  4,
 }
 
-// Matcher combines OSV vulnerability results with hygiene findings.
+// Matcher combines OSV and Go vulnerability database results.
 type Matcher struct {
-	client *Client
+	client       *Client
+	goVulnClient *GoVulnClient
 }
 
-// NewMatcher creates a Matcher backed by the given OSV client.
+// NewMatcher creates a Matcher backed by OSV and the Go vuln DB.
 func NewMatcher(client *Client) *Matcher {
-	return &Matcher{client: client}
+	return &Matcher{
+		client:       client,
+		goVulnClient: NewGoVulnClient(),
+	}
 }
 
-// Match queries OSV for the given components, deduplicates findings, and
-// returns them sorted by severity (CRITICAL first), then by ID.
+// Match queries OSV and the Go vuln DB for the given components,
+// deduplicates findings, and returns them sorted by severity then ID.
 func (m *Matcher) Match(ctx context.Context, components []models.Component) ([]models.Finding, error) {
 	findings, err := m.client.QueryBatch(ctx, components)
 	if err != nil {
 		return nil, err
 	}
+
+	goFindings, err := m.goVulnClient.QueryAll(ctx, components)
+	if err != nil {
+		// Degrade gracefully: log but do not fail the scan.
+		goFindings = nil
+	}
+	findings = append(findings, goFindings...)
 
 	findings = deduplicate(findings)
 	sortFindings(findings)
@@ -46,7 +57,7 @@ func deduplicate(findings []models.Finding) []models.Finding {
 		Version   string
 	}
 
-	seen := make(map[key]struct{}, len(findings))
+	index := make(map[key]int, len(findings))
 	out := make([]models.Finding, 0, len(findings))
 
 	for _, f := range findings {
@@ -55,10 +66,14 @@ func deduplicate(findings []models.Finding) []models.Finding {
 			Component: f.Component.Name,
 			Version:   f.Component.Version,
 		}
-		if _, exists := seen[k]; exists {
+		if idx, exists := index[k]; exists {
+			// Prefer govulndb over osv for Go-specific findings.
+			if f.Source == "govulndb" && out[idx].Source != "govulndb" {
+				out[idx] = f
+			}
 			continue
 		}
-		seen[k] = struct{}{}
+		index[k] = len(out)
 		out = append(out, f)
 	}
 
