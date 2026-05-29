@@ -20,10 +20,11 @@ import (
 	"github.com/chainsaw-dev/chainsaw/internal/licence"
 	"github.com/chainsaw-dev/chainsaw/internal/report"
 	"github.com/chainsaw-dev/chainsaw/internal/sbom"
-	"github.com/chainsaw-dev/chainsaw/internal/schema"
 	"github.com/chainsaw-dev/chainsaw/internal/scanner"
+	"github.com/chainsaw-dev/chainsaw/internal/schema"
 	"github.com/chainsaw-dev/chainsaw/internal/trend"
 	"github.com/chainsaw-dev/chainsaw/internal/vuln"
+	"github.com/chainsaw-dev/chainsaw/internal/watch"
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
 )
 
@@ -48,6 +49,7 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(scanCmd())
 	root.AddCommand(sbomCmd())
 	root.AddCommand(versionCmd())
+	root.AddCommand(completionCmd())
 	root.AddCommand(complyCmd())
 	root.AddCommand(supplyChainCmd())
 	root.AddCommand(checkCmd())
@@ -61,6 +63,7 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(generateDeclarationCmd())
 	root.AddCommand(generateDocsCmd())
 	root.AddCommand(schemaCmd())
+	root.AddCommand(watchCmd())
 
 	return root
 }
@@ -168,14 +171,14 @@ func baselineCmd() *cobra.Command {
 
 func generateDeclarationCmd() *cobra.Command {
 	var (
-		ecosystem   string
-		policyPath  string
-		outputPath  string
-		quiet       bool
-		product     string
-		version_    string
-		category    string
-		address     string
+		ecosystem  string
+		policyPath string
+		outputPath string
+		quiet      bool
+		product    string
+		version_   string
+		category   string
+		address    string
 	)
 
 	cmd := &cobra.Command{
@@ -614,7 +617,7 @@ func scanCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json, sarif")
+	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json, sarif, markdown")
 	cmd.Flags().StringVar(&failOn, "fail-on", "", "Minimum severity to fail on (CRITICAL, HIGH, MEDIUM, LOW)")
 	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Comma-separated ecosystems to scan (e.g. go,npm)")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
@@ -693,6 +696,42 @@ func versionCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("chainsaw %s\n", version)
 		},
+	}
+}
+
+func completionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion script",
+		Long: `Generate shell completion script for bash, zsh, fish, or powershell.
+
+To use bash completion:
+  chainsaw completion bash | sudo tee /usr/share/bash-completion.d/chainsaw
+
+To use zsh completion:
+  chainsaw completion zsh | sudo tee /usr/share/zsh/site-functions/_chainsaw
+
+To use fish completion:
+  chainsaw completion fish | sudo tee /usr/share/fish/vendor_completions.d/chainsaw.fish
+
+To use powershell completion:
+  chainsaw completion powershell | Out-String | Out-File -FilePath $PROFILE -Append`,
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return cmd.Root().GenBashCompletionV2(os.Stdout, true)
+			case "zsh":
+				return cmd.Root().GenZshCompletion(os.Stdout)
+			case "fish":
+				return cmd.Root().GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+			}
+			return nil
+		},
+		DisableFlagsInUseLine: true,
 	}
 }
 
@@ -841,13 +880,15 @@ func complyCmd() *cobra.Command {
 				return cra.WriteComplianceJSON(ctx, w, result)
 			case "sarif":
 				return cra.WriteCRASARIF(ctx, w, result)
+			case "markdown":
+				return report.WriteCRAMarkdown(ctx, w, result)
 			default:
 				return cra.WriteComplianceReport(ctx, w, result)
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json, sarif")
+	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json, sarif, markdown")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
 	cmd.Flags().BoolVar(&showTrend, "trend", false, "Show CRA score trend since last assessment")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
@@ -1509,13 +1550,13 @@ func initCRACmd() *cobra.Command {
 
 func generateDocsCmd() *cobra.Command {
 	var (
-		ecosystem   string
-		policyPath  string
-		outputPath  string
-		quiet       bool
-		product     string
-		version_    string
-		category    string
+		ecosystem  string
+		policyPath string
+		outputPath string
+		quiet      bool
+		product    string
+		version_   string
+		category   string
 	)
 
 	cmd := &cobra.Command{
@@ -1747,6 +1788,81 @@ func schemaCmd() *cobra.Command {
 	return cmd
 }
 
+func watchCmd() *cobra.Command {
+	var (
+		ecosystem string
+		quiet     bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "watch [path]",
+		Short: "Watch lockfiles and re-scan on changes",
+		Long:  "Poll lockfiles for changes and automatically re-scan. Press Ctrl+C to exit.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Watching for lockfile changes in %s...\n", root)
+				fmt.Fprintln(os.Stderr, "Press Ctrl+C to stop.")
+			}
+
+			prevCount := 0
+			cfg := watch.DefaultWatchConfig(root)
+			cfg.OnChange = func(ctx context.Context, events []watch.ChangeEvent) error {
+				if !quiet {
+					for _, e := range events {
+						fmt.Fprintf(os.Stderr, "Changed: %s\n", e.File)
+					}
+					fmt.Fprintln(os.Stderr, "Re-scanning...")
+				}
+
+				scanners := engine.ResolveScanners(ecosystem)
+				var components []models.Component
+				for _, s := range scanners {
+					manifests, err := s.DetectManifests(ctx, root)
+					if err != nil {
+						continue
+					}
+					for _, m := range manifests {
+						deps, err := s.ParseDependencies(ctx, m)
+						if err != nil {
+							continue
+						}
+						components = append(components, deps...)
+					}
+				}
+
+				client := vuln.NewClient()
+				matcher := vuln.NewMatcher(client)
+				findings, _ := matcher.Match(ctx, components)
+
+				hygieneFindings := hygiene.CheckTyposquatting(components)
+				hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+
+				total := len(findings) + len(hygieneFindings)
+
+				if !quiet {
+					fmt.Fprintf(os.Stderr, "%s\n", watch.FormatDelta(prevCount, total))
+				}
+				prevCount = total
+				return nil
+			}
+
+			return watch.Watch(ctx, cfg)
+		},
+	}
+
+	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Limit to ecosystem")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress output")
+
+	return cmd
+}
+
 func writeOutput(ctx context.Context, w *os.File, format string, result models.ScanResult) error {
 	switch format {
 	case "table":
@@ -1755,6 +1871,8 @@ func writeOutput(ctx context.Context, w *os.File, format string, result models.S
 		return report.WriteJSON(ctx, w, result)
 	case "sarif":
 		return report.WriteSARIF(ctx, w, result)
+	case "markdown":
+		return report.WriteMarkdown(ctx, w, result)
 	default:
 		return fmt.Errorf("unsupported output format: %s", format)
 	}
