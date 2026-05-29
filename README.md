@@ -61,8 +61,8 @@ goes further:
 ### Homebrew (macOS and Linux)
 
 ```
-brew tap jessequinn/chainsaw
-brew install --cask chainsaw
+brew tap jessequinn/chainsaw-cli
+brew install --cask chainsaw-cli
 ```
 
 ### Go install

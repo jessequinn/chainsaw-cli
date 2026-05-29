@@ -40,10 +40,10 @@ checksum:
   algorithm: sha256
 
 homebrew_casks:
-  - name: chainsaw
+  - name: chainsaw-cli
     repository:
       owner: jessequinn
-      name: homebrew-chainsaw
+      name: homebrew-chainsaw-cli
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Casks
     homepage: "https://github.com/jessequinn/chainsaw-cli"
