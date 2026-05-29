@@ -152,6 +152,7 @@ type Component struct {
 	PkgURL    string    `json:"purl"`
 	Location  string    `json:"location,omitempty"`
 	Direct    bool      `json:"direct,omitempty"`
+	DependsOn []string  `json:"depends_on,omitempty"`
 }
 
 type Finding struct {

@@ -59,7 +59,7 @@ Before answering or acting, agents should:
 - **Spec:** v1 design archived at `openspec/archive/v1-core/`. Active
   v2 proposals: Python, Elixir, Terraform, Dockerfile, Docker Compose,
   GitHub Actions, Ansible.
-- **Licence:** TBD (recommend MIT or Apache-2.0).
+- **Licence:** Apache-2.0.
 
 ## Tooling & Environment
 

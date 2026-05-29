@@ -20,6 +20,7 @@ import (
 	"github.com/chainsaw-dev/chainsaw/internal/licence"
 	"github.com/chainsaw-dev/chainsaw/internal/report"
 	"github.com/chainsaw-dev/chainsaw/internal/sbom"
+	"github.com/chainsaw-dev/chainsaw/internal/schema"
 	"github.com/chainsaw-dev/chainsaw/internal/scanner"
 	"github.com/chainsaw-dev/chainsaw/internal/trend"
 	"github.com/chainsaw-dev/chainsaw/internal/vuln"
@@ -54,10 +55,12 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(initSecurityCmd())
 	root.AddCommand(initCICmd())
 	root.AddCommand(initCRACmd())
+	root.AddCommand(initHooksCmd())
 	root.AddCommand(diffCmd())
 	root.AddCommand(baselineCmd())
 	root.AddCommand(generateDeclarationCmd())
 	root.AddCommand(generateDocsCmd())
+	root.AddCommand(schemaCmd())
 
 	return root
 }
@@ -405,11 +408,13 @@ func initCICmd() *cobra.Command {
 		failOn     string
 		policyPath string
 		ecosystems string
+		platform   string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "init-ci [path]",
-		Short: "Generate GitHub Actions workflow for supply chain scanning",
+		Short: "Generate CI workflow for supply chain scanning",
+		Long:  "Generate CI workflow file (GitHub Actions, GitLab CI, etc.) for supply chain scanning.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root := "."
@@ -417,33 +422,50 @@ func initCICmd() *cobra.Command {
 				root = args[0]
 			}
 
-			cfg := initcmd.DefaultCIConfig()
-			if cmd.Flags().Changed("go-version") {
-				cfg.GoVersion = goVersion
-			}
-			if cmd.Flags().Changed("fail-on") {
-				cfg.FailOn = failOn
-			}
-			if cmd.Flags().Changed("policy") {
-				cfg.PolicyPath = policyPath
-			}
-			if cmd.Flags().Changed("ecosystems") {
-				cfg.Ecosystems = ecosystems
-			}
+			switch platform {
+			case "github":
+				cfg := initcmd.DefaultCIConfig()
+				if cmd.Flags().Changed("go-version") {
+					cfg.GoVersion = goVersion
+				}
+				if cmd.Flags().Changed("fail-on") {
+					cfg.FailOn = failOn
+				}
+				if cmd.Flags().Changed("policy") {
+					cfg.PolicyPath = policyPath
+				}
+				if cmd.Flags().Changed("ecosystems") {
+					cfg.Ecosystems = ecosystems
+				}
 
-			written, err := initcmd.WriteCIFiles(root, cfg)
-			if err != nil {
-				return fmt.Errorf("writing CI workflow: %w", err)
-			}
+				written, err := initcmd.WriteCIFiles(root, cfg)
+				if err != nil {
+					return fmt.Errorf("writing CI workflow: %w", err)
+				}
 
-			fmt.Fprintln(os.Stdout, "Created CI workflow:")
-			for _, f := range written {
-				fmt.Fprintf(os.Stdout, "  %s\n", f)
+				fmt.Fprintln(os.Stdout, "Created GitHub Actions workflow:")
+				for _, f := range written {
+					fmt.Fprintf(os.Stdout, "  %s\n", f)
+				}
+				return nil
+
+			case "gitlab":
+				path, err := initcmd.WriteGitLabCI(root)
+				if err != nil {
+					return fmt.Errorf("writing GitLab CI file: %w", err)
+				}
+
+				fmt.Fprintln(os.Stdout, "Created GitLab CI configuration:")
+				fmt.Fprintf(os.Stdout, "  %s\n", path)
+				return nil
+
+			default:
+				return fmt.Errorf("unsupported platform %q; supported platforms: github, gitlab", platform)
 			}
-			return nil
 		},
 	}
 
+	cmd.Flags().StringVar(&platform, "platform", "github", "CI platform: github, gitlab")
 	cmd.Flags().StringVar(&goVersion, "go-version", "1.22", "Go version for the workflow")
 	cmd.Flags().StringVar(&failOn, "fail-on", "HIGH", "Minimum severity to fail on")
 	cmd.Flags().StringVar(&policyPath, "policy", ".chainsaw.yaml", "Path to policy file")
@@ -461,6 +483,7 @@ func scanCmd() *cobra.Command {
 		detectLicences bool
 		outputPath     string
 		quiet          bool
+		showTree       bool
 	)
 
 	cmd := &cobra.Command{
@@ -576,6 +599,14 @@ func scanCmd() *cobra.Command {
 				return err
 			}
 
+			// Dependency tree (if enabled and format is table).
+			if showTree && format == "table" {
+				fmt.Fprintln(w)
+				if err := report.WriteTree(w, result.Components); err != nil {
+					return err
+				}
+			}
+
 			if exitCode != 0 {
 				os.Exit(exitCode)
 			}
@@ -590,6 +621,7 @@ func scanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&detectLicences, "detect-licences", false, "Detect licences for dependencies via registry APIs")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
+	cmd.Flags().BoolVar(&showTree, "tree", false, "Show dependency tree visualization (with --format=table)")
 
 	return cmd
 }
@@ -1632,6 +1664,86 @@ func generateDocsCmd() *cobra.Command {
 	cmd.Flags().StringVar(&version_, "version", "", "Product version (default: tool version)")
 	cmd.Flags().StringVar(&category, "category", "", "CRA category: default, important-class-1, important-class-2, critical (default: default)")
 
+	return cmd
+}
+
+func initHooksCmd() *cobra.Command {
+	var (
+		framework string
+		force     bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "init-hooks [path]",
+		Short: "Set up git pre-commit hooks for security scanning",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			var (
+				path string
+				err  error
+			)
+
+			switch framework {
+			case "native":
+				if force {
+					path, err = initcmd.WriteNativeHookForce(root)
+				} else {
+					path, err = initcmd.WriteNativeHook(root)
+				}
+			case "pre-commit":
+				path, err = initcmd.WritePreCommitConfig(root)
+			default:
+				return fmt.Errorf("unknown framework %q; use 'native' or 'pre-commit'", framework)
+			}
+
+			if err != nil {
+				return err
+			}
+
+			fmt.Fprintf(os.Stdout, "Created: %s\n", path)
+			if framework == "pre-commit" {
+				fmt.Fprintln(os.Stdout, "Run 'pre-commit install' to activate the hook.")
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&framework, "framework", "native", "Hook framework: native, pre-commit")
+	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing hook")
+
+	return cmd
+}
+
+func schemaCmd() *cobra.Command {
+	var name string
+
+	cmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Print JSON schemas for chainsaw output formats",
+		Long:  "Print or list available JSON schemas for chainsaw output formats and policy files.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			schemas := schema.AllSchemas()
+			if name != "" {
+				s, ok := schemas[name]
+				if !ok {
+					return fmt.Errorf("unknown schema %q; available: scan-result, cra-result, supply-chain-result, policy", name)
+				}
+				return schema.WriteSchema(os.Stdout, s)
+			}
+			// Print all schema names.
+			for k := range schemas {
+				fmt.Println(k)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "Schema name (scan-result, cra-result, supply-chain-result, policy)")
 	return cmd
 }
 

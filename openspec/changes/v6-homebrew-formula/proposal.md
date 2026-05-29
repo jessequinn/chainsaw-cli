@@ -128,7 +128,7 @@ class Chainsaw < Formula
   url "https://github.com/chainsaw-dev/chainsaw/releases/download/v#{version}/chainsaw-#{version}-source.tar.gz"
   version "0.3.3"
   sha256 "<sha256-of-source-tarball>"
-  license "MIT"  # update once licence is confirmed; must be SPDX identifier
+  license "Apache-2.0"
 
   head "https://github.com/chainsaw-dev/chainsaw.git", branch: "main"
 
@@ -242,10 +242,8 @@ approach is a small workflow in `homebrew-chainsaw` that listens for
 
 ## Risks
 
-- **License not yet confirmed.** AGENTS.md says "recommend MIT or
-  Apache-2.0". The formula needs a confirmed SPDX identifier before
-  any homebrew-core submission. Risk is low for the tap (lax policy)
-  but blocks core eventually.
+- **License confirmed as Apache-2.0.** This is DFSG-compliant and
+  accepted by homebrew-core. No blocker.
 - **Go 1.26.3 is newer than what Homebrew's CI may have installed.**
   Homebrew CI uses the Go version in the formula's `depends_on`; if
   `go@1.26` is not yet available as a Homebrew formula, downgrade to
