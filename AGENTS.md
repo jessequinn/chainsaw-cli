@@ -486,6 +486,29 @@ practices. Every change is held to a higher standard.
 Not applicable for a CLI tool. If chainsaw is ever wrapped as a
 service, add RED metrics and trace propagation at that point.
 
+## Infrastructure
+
+Infrastructure details (Tailscale IPs, SSH credentials, server specs,
+CI runner mappings) are in **`.opencode/infrastructure.md`** (gitignored,
+local-only). This file is loaded automatically by agents via
+`opencode.json` `instructions`.
+
+If the file is missing, copy it from
+`agentic-workflows/workflows/templates/.opencode/infrastructure.md.template`
+and tailor for this project.
+
+Rules for agents touching infrastructure:
+
+- Treat Tailscale IPs as the source of truth; public IPs and hostnames can
+  change.
+- Never bake credentials into scripts; rely on the SSH key documented in
+  the infrastructure file.
+- Mutating operations (package upgrades, kernel updates, service restarts)
+  require explicit human approval unless the operating workflow says
+  otherwise.
+- For broad fleet operations, prefer the workflows in
+  `agentic-workflows/workflows/infrastructure/` as the canonical procedure.
+
 ## Release & Deployment Checklist
 
 ### Pre-release

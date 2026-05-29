@@ -35,6 +35,9 @@ results.sarif
 # Cache
 .drift-cache/
 
+# OpenCode private files (sensitive infrastructure details)
+.opencode/
+
 # IDE and editor
 .vscode/
 .idea/
