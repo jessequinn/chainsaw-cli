@@ -9,7 +9,7 @@ import (
 
 // CIConfig holds configuration for CI workflow generation.
 type CIConfig struct {
-	GoVersion  string // e.g., "1.22"
+	GoVersion  string // e.g., "1.26"
 	FailOn     string // severity threshold, e.g., "HIGH"
 	PolicyPath string // path to .chainsaw.yaml
 	Ecosystems string // comma-separated, empty = auto-detect
@@ -18,7 +18,7 @@ type CIConfig struct {
 // DefaultCIConfig returns sensible defaults.
 func DefaultCIConfig() CIConfig {
 	return CIConfig{
-		GoVersion:  "1.22",
+		GoVersion:  "1.26",
 		FailOn:     "HIGH",
 		PolicyPath: ".chainsaw.yaml",
 		Ecosystems: "",
