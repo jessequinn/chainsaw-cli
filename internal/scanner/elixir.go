@@ -83,6 +83,7 @@ func (e *ElixirScanner) ParseDependencies(ctx context.Context, manifestPath stri
 			Ecosystem: models.EcosystemHex,
 			PkgURL:    "pkg:hex/" + name + "@" + version,
 			Hash:      hash,
+			Direct:    false,
 		}
 		components = append(components, c)
 	}

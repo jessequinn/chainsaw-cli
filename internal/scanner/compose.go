@@ -124,5 +124,6 @@ func parseImageRef(image string) (models.Component, bool) {
 		Version:   version,
 		Ecosystem: models.EcosystemDocker,
 		PkgURL:    purl,
+		Direct:    false,
 	}, true
 }

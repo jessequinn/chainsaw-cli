@@ -42,6 +42,12 @@ func WriteTable(_ context.Context, w io.Writer, result models.ScanResult) error 
 		}
 	}
 
+	if len(result.Warnings) > 0 {
+		if err := writeWarningsSection(w, result.Warnings); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -114,6 +120,23 @@ func writeHygieneTable(w io.Writer, findings []models.Finding) error {
 
 	if _, err := fmt.Fprintln(w); err != nil {
 		return fmt.Errorf("writing hygiene footer: %w", err)
+	}
+	return nil
+}
+
+func writeWarningsSection(w io.Writer, warnings []string) error {
+	if _, err := fmt.Fprintln(w, "Warnings"); err != nil {
+		return fmt.Errorf("writing warnings title: %w", err)
+	}
+
+	for _, warning := range warnings {
+		if _, err := fmt.Fprintf(w, "  - %s\n", warning); err != nil {
+			return fmt.Errorf("writing warning: %w", err)
+		}
+	}
+
+	if _, err := fmt.Fprintln(w); err != nil {
+		return fmt.Errorf("writing warnings footer: %w", err)
 	}
 	return nil
 }

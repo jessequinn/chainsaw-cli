@@ -126,6 +126,7 @@ func parseUsesDirective(uses string) (models.Component, bool) {
 		Version:   ref,
 		Ecosystem: models.EcosystemGitHubActions,
 		PkgURL:    "pkg:githubactions/" + name + "@" + ref,
+		Direct:    false,
 	}
 
 	// Classify pin type and store as hash for SHA pins.

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -9,11 +10,6 @@ import (
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
 )
-
-// LicensePolicy defines which licenses are denied.
-type LicensePolicy struct {
-	Deny []string `yaml:"deny"`
-}
 
 // CRAPolicy defines CRA compliance thresholds.
 type CRAPolicy struct {
@@ -42,7 +38,6 @@ type LicencePolicy struct {
 type Policy struct {
 	FailOn   models.Severity `yaml:"fail_on"`
 	Ignore   []string        `yaml:"ignore"`
-	Licenses LicensePolicy   `yaml:"licenses"`
 
 	// v2 fields
 	CRA         CRAPolicy         `yaml:"cra"`
@@ -58,11 +53,50 @@ func LoadPolicy(_ context.Context, path string) (*Policy, error) {
 	}
 
 	var p Policy
-	if err := yaml.Unmarshal(data, &p); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&p); err != nil {
 		return nil, fmt.Errorf("parsing policy file: %w", err)
 	}
 
+	if err := p.validate(); err != nil {
+		return nil, fmt.Errorf("invalid policy: %w", err)
+	}
+
 	return &p, nil
+}
+
+// validate checks that the policy fields have valid values.
+func (p *Policy) validate() error {
+	// Validate fail_on severity
+	if p.FailOn != "" && p.FailOn != models.SeverityNone {
+		valid := map[models.Severity]bool{
+			models.SeverityCritical: true,
+			models.SeverityHigh:     true,
+			models.SeverityMedium:   true,
+			models.SeverityLow:      true,
+		}
+		if !valid[p.FailOn] {
+			return fmt.Errorf("invalid fail_on severity %q: must be CRITICAL, HIGH, MEDIUM, or LOW", p.FailOn)
+		}
+	}
+
+	// Validate CRA required score
+	if p.CRA.RequiredScore < 0 || p.CRA.RequiredScore > 100 {
+		return fmt.Errorf("cra.required-score must be between 0 and 100, got %d", p.CRA.RequiredScore)
+	}
+
+	// Validate supply chain min pinning score
+	if p.SupplyChain.MinPinningScore < 0 || p.SupplyChain.MinPinningScore > 100 {
+		return fmt.Errorf("supply-chain.min-pinning-score must be between 0 and 100, got %d", p.SupplyChain.MinPinningScore)
+	}
+
+	// Validate licence mode
+	if p.Licences.Mode != "" && p.Licences.Mode != "allow" && p.Licences.Mode != "deny" {
+		return fmt.Errorf("licences.mode must be \"allow\" or \"deny\", got %q", p.Licences.Mode)
+	}
+
+	return nil
 }
 
 // DefaultPolicy returns a permissive policy with no restrictions.
@@ -105,8 +139,8 @@ func (p *Policy) Evaluate(result models.ScanResult) ([]models.Finding, int) {
 		ignored[id] = true
 	}
 
-	denied := make(map[string]bool, len(p.Licenses.Deny))
-	for _, lic := range p.Licenses.Deny {
+	denied := make(map[string]bool, len(p.Licences.DenyList))
+	for _, lic := range p.Licences.DenyList {
 		denied[lic] = true
 	}
 
@@ -137,6 +171,7 @@ func (p *Policy) Evaluate(result models.ScanResult) ([]models.Finding, int) {
 						Version:   comp.Version,
 						Ecosystem: comp.Ecosystem,
 						PkgURL:    comp.PkgURL,
+						Direct:    comp.Direct,
 					},
 					Source: "policy",
 				})

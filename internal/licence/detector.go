@@ -229,6 +229,7 @@ func licenceFinding(comp models.Component, licence, reason string) models.Findin
 			Version:   comp.Version,
 			Ecosystem: comp.Ecosystem,
 			PkgURL:    comp.PkgURL,
+			Direct:    comp.Direct,
 		},
 		Source: "licence",
 	}

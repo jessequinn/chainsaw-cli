@@ -70,6 +70,7 @@ func (g *GoScanner) ParseDependencies(ctx context.Context, manifestPath string) 
 			Version:   mod.Version,
 			Ecosystem: models.EcosystemGo,
 			PkgURL:    "pkg:golang/" + mod.Path + "@" + mod.Version,
+			Direct:    true,
 		}
 		if h, ok := hashes[mod.Path+"@"+mod.Version]; ok {
 			c.Hash = h

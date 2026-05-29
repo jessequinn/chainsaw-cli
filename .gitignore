@@ -27,6 +27,10 @@ config.yaml.old
 # Scan output
 reports/
 output/
+results.sarif
+
+# Trend history (local data)
+.chainsaw/
 
 # Cache
 .drift-cache/
@@ -41,3 +45,4 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+**/.chainsaw/

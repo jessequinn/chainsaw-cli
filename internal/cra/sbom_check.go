@@ -143,12 +143,21 @@ func (s *SBOMChecker) Check(ctx *AssessmentContext) []models.CRACheck {
 	}
 
 	// 5. Top-level dependency enumeration.
+	direct := 0
+	transitive := 0
+	for _, c := range ctx.Components {
+		if c.Direct {
+			direct++
+		} else {
+			transitive++
+		}
+	}
 	checks = append(checks, models.CRACheck{
 		ID:       "sbom-top-level",
 		Title:    "Top-level dependency enumeration",
 		Article:  "Annex I, Part 2(1)",
 		Status:   models.CRAPass,
-		Details:  fmt.Sprintf("Top-level dependencies enumerated (%d components).", len(ctx.Components)),
+		Details:  fmt.Sprintf("Top-level dependencies enumerated (%d direct, %d transitive, %d total components).", direct, transitive, len(ctx.Components)),
 		Severity: models.SeverityHigh,
 	})
 

@@ -24,6 +24,7 @@ func CheckIntegrity(components []models.Component) []models.Finding {
 				Version:   comp.Version,
 				Ecosystem: comp.Ecosystem,
 				PkgURL:    comp.PkgURL,
+				Direct:    comp.Direct,
 			},
 			Source: "hygiene",
 		})

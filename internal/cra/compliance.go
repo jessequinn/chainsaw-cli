@@ -37,12 +37,14 @@ type CRAConfig struct {
 // Assess runs all CRA compliance checks and returns the aggregated result.
 func Assess(_ context.Context, actx *AssessmentContext) models.CRAResult {
 	checkers := []Checker{
+		&ClassificationChecker{},
 		&SBOMChecker{},
 		&VulnChecker{},
 		&DisclosureChecker{},
 		&UpdateChecker{},
 		&SupportChecker{},
 		&ReportingChecker{},
+		&SecureDefaultsChecker{},
 	}
 
 	var checks []models.CRACheck

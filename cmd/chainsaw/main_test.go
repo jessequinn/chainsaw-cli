@@ -286,3 +286,237 @@ func TestInitCICommand(t *testing.T) {
 		t.Errorf("expected chainsaw.yml to exist at %s", workflow)
 	}
 }
+
+func TestScanCommand_WithOutputFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "scan-output.json")
+
+	_, _, err := executeCommand(t, "scan", "--format", "json", "--ecosystem", "go", "--output", outputFile, ".")
+
+	if err != nil {
+		t.Fatalf("scan --output returned error: %v", err)
+	}
+
+	// Check that the output file was created and contains JSON
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+
+	output := string(data)
+	if len(output) == 0 {
+		t.Fatal("expected JSON output in file, got empty string")
+	}
+
+	trimmed := strings.TrimSpace(output)
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		t.Errorf("expected JSON output starting with '{' or '[', got: %.100s", trimmed)
+	}
+}
+
+func TestSbomCommand_WithOutputFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "sbom-output.json")
+
+	_, _, err := executeCommand(t, "sbom", "--output", outputFile, ".")
+
+	if err != nil {
+		t.Fatalf("sbom --output returned error: %v", err)
+	}
+
+	// Check that the output file was created and contains CycloneDX
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+
+	output := string(data)
+	if !strings.Contains(output, "CycloneDX") && !strings.Contains(output, "cyclonedx") && !strings.Contains(output, "bomFormat") {
+		t.Errorf("expected CycloneDX output in file, got: %.200s", output)
+	}
+}
+
+func TestComplyCommand_WithOutputFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "comply-output.json")
+
+	_, _, err := executeCommand(t, "comply", "--format", "json", "--output", outputFile, ".")
+
+	if err != nil {
+		t.Fatalf("comply --output returned error: %v", err)
+	}
+
+	// Check that the output file was created and contains JSON
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+
+	output := string(data)
+	if len(output) == 0 {
+		t.Fatal("expected JSON output in file, got empty string")
+	}
+
+	trimmed := strings.TrimSpace(output)
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		t.Errorf("expected JSON output starting with '{' or '[', got: %.100s", trimmed)
+	}
+}
+
+func TestSupplyChainCommand_WithOutputFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "supply-chain-output.json")
+
+	_, _, err := executeCommand(t, "supply-chain", "--format", "json", "--output", outputFile, ".")
+
+	if err != nil {
+		t.Fatalf("supply-chain --output returned error: %v", err)
+	}
+
+	// Check that the output file was created and contains JSON
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+
+	output := string(data)
+	if len(output) == 0 {
+		t.Fatal("expected JSON output in file, got empty string")
+	}
+
+	trimmed := strings.TrimSpace(output)
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		t.Errorf("expected JSON output starting with '{' or '[', got: %.100s", trimmed)
+	}
+}
+
+func TestCheckCommand_WithOutputFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "check-output.json")
+
+	_, _, err := executeCommand(t, "check", "--format", "json", "--output", outputFile, ".")
+
+	if err != nil {
+		t.Fatalf("check --output returned error: %v", err)
+	}
+
+	// Check that the output file was created and contains JSON
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+
+	output := string(data)
+	if len(output) == 0 {
+		t.Fatal("expected JSON output in file, got empty string")
+	}
+
+	trimmed := strings.TrimSpace(output)
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		t.Errorf("expected JSON output starting with '{' or '[', got: %.100s", trimmed)
+	}
+}
+
+func TestScanCommand_WithQuietFlag(t *testing.T) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	_, stderr, err := executeCommand(t, "scan", "--ecosystem", "go", "--quiet", ".")
+
+	w.Close()
+	os.Stdout = old
+	r.Close()
+
+	if err != nil {
+		t.Fatalf("scan --quiet returned error: %v", err)
+	}
+
+	// With --quiet, stderr should not contain progress messages
+	if strings.Contains(stderr, "Scanning") || strings.Contains(stderr, "Querying") {
+		t.Errorf("expected no progress messages with --quiet, got stderr: %q", stderr)
+	}
+}
+
+func TestScanCommand_WithoutQuietFlag(t *testing.T) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	_, stderr, err := executeCommand(t, "scan", "--ecosystem", "go", ".")
+
+	w.Close()
+	os.Stdout = old
+	r.Close()
+
+	if err != nil {
+		t.Fatalf("scan returned error: %v", err)
+	}
+
+	// Without --quiet, stderr should contain progress messages (if there are components)
+	// Note: may be empty if no manifests found, so we just verify no error
+	_ = stderr
+}
+
+func TestComplyCommand_WithQuietFlag(t *testing.T) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	_, stderr, err := executeCommand(t, "comply", "--quiet", ".")
+
+	w.Close()
+	os.Stdout = old
+	r.Close()
+
+	if err != nil {
+		t.Fatalf("comply --quiet returned error: %v", err)
+	}
+
+	// With --quiet, stderr should not contain progress messages
+	if strings.Contains(stderr, "Scanning") || strings.Contains(stderr, "Assessing") {
+		t.Errorf("expected no progress messages with --quiet, got stderr: %q", stderr)
+	}
+}
+
+func TestSupplyChainCommand_WithQuietFlag(t *testing.T) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	_, stderr, err := executeCommand(t, "supply-chain", "--quiet", ".")
+
+	w.Close()
+	os.Stdout = old
+	r.Close()
+
+	if err != nil {
+		t.Fatalf("supply-chain --quiet returned error: %v", err)
+	}
+
+	// With --quiet, stderr should not contain progress messages
+	if strings.Contains(stderr, "Scanning") || strings.Contains(stderr, "Analysing") {
+		t.Errorf("expected no progress messages with --quiet, got stderr: %q", stderr)
+	}
+}
+
+func TestCheckCommand_WithQuietFlag(t *testing.T) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	_, stderr, err := executeCommand(t, "check", "--quiet", ".")
+
+	w.Close()
+	os.Stdout = old
+	r.Close()
+
+	if err != nil {
+		t.Fatalf("check --quiet returned error: %v", err)
+	}
+
+	// With --quiet, stderr should not contain progress messages
+	if strings.Contains(stderr, "Scanning") || strings.Contains(stderr, "Assessing") || strings.Contains(stderr, "Analysing") {
+		t.Errorf("expected no progress messages with --quiet, got stderr: %q", stderr)
+	}
+}

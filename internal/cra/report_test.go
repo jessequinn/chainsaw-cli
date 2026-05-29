@@ -112,3 +112,96 @@ func TestWriteComplianceReport_AllFail(t *testing.T) {
 		t.Error("output missing remediation for Check B")
 	}
 }
+
+func TestWriteComplianceReport_DeadlineCountdown(t *testing.T) {
+	checks := []models.CRACheck{
+		{ID: "a", Title: "Check A", Article: "Art 1", Status: models.CRAPass, Details: "ok", Severity: models.SeverityMedium},
+	}
+	result := sampleResult(100, checks)
+
+	var buf bytes.Buffer
+	if err := WriteComplianceReport(context.Background(), &buf, result); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Next deadline: 2026-09-11") {
+		t.Error("output missing deadline date")
+	}
+	if !strings.Contains(out, "Days remaining:") {
+		t.Error("output missing days remaining countdown")
+	}
+}
+
+func TestWriteComplianceReport_DeadlineCountdown_NoDeadline(t *testing.T) {
+	checks := []models.CRACheck{
+		{ID: "a", Title: "Check A", Article: "Art 1", Status: models.CRAPass, Details: "ok", Severity: models.SeverityMedium},
+	}
+	result := sampleResult(100, checks)
+	result.NextDeadline = ""
+	result.NextDeadDesc = ""
+
+	var buf bytes.Buffer
+	if err := WriteComplianceReport(context.Background(), &buf, result); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "Days remaining:") {
+		t.Error("output should not have days remaining when no deadline")
+	}
+}
+
+func TestWriteComplianceJSON_DeadlineCountdown(t *testing.T) {
+	checks := []models.CRACheck{
+		{ID: "a", Title: "Check A", Article: "Art 1", Status: models.CRAPass, Details: "ok", Severity: models.SeverityMedium},
+	}
+	result := sampleResult(100, checks)
+
+	var buf bytes.Buffer
+	if err := WriteComplianceJSON(context.Background(), &buf, result); err != nil {
+		t.Fatal(err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if _, ok := parsed["days_remaining"]; !ok {
+		t.Error("JSON missing days_remaining field")
+	}
+
+	daysRemaining, ok := parsed["days_remaining"].(float64)
+	if !ok {
+		t.Error("days_remaining is not a number")
+	}
+
+	// The deadline is 2026-09-11, which should be positive days from now (2026-05-29).
+	if daysRemaining <= 0 {
+		t.Errorf("days_remaining should be positive, got %v", daysRemaining)
+	}
+}
+
+func TestWriteComplianceJSON_DeadlineCountdown_NoDeadline(t *testing.T) {
+	checks := []models.CRACheck{
+		{ID: "a", Title: "Check A", Article: "Art 1", Status: models.CRAPass, Details: "ok", Severity: models.SeverityMedium},
+	}
+	result := sampleResult(100, checks)
+	result.NextDeadline = ""
+	result.NextDeadDesc = ""
+
+	var buf bytes.Buffer
+	if err := WriteComplianceJSON(context.Background(), &buf, result); err != nil {
+		t.Fatal(err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	// days_remaining should be 0 or omitted when no deadline.
+	daysRemaining, ok := parsed["days_remaining"]
+	if ok && daysRemaining != float64(0) {
+		t.Errorf("days_remaining should be 0 or omitted when no deadline, got %v", daysRemaining)
+	}
+}

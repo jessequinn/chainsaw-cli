@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"time"
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
 )
@@ -76,6 +77,19 @@ func WriteComplianceReport(_ context.Context, w io.Writer, result models.CRAResu
 
 	if result.NextDeadline != "" {
 		fmt.Fprintf(w, "Next deadline: %s -- %s\n", result.NextDeadline, result.NextDeadDesc)
+
+		// Calculate and display countdown.
+		deadline, err := time.Parse("2006-01-02", result.NextDeadline)
+		if err == nil {
+			days := int(time.Until(deadline).Hours() / 24)
+			urgency := "green"
+			if days < 30 {
+				urgency = "RED"
+			} else if days < 90 {
+				urgency = "YELLOW"
+			}
+			fmt.Fprintf(w, "Days remaining: %d [%s]\n", days, urgency)
+		}
 	}
 
 	fmt.Fprintln(w, "")
@@ -84,11 +98,27 @@ func WriteComplianceReport(_ context.Context, w io.Writer, result models.CRAResu
 	return nil
 }
 
-// WriteComplianceJSON writes the CRA result as indented JSON.
+// WriteComplianceJSON writes the CRA result as indented JSON with deadline countdown.
 func WriteComplianceJSON(_ context.Context, w io.Writer, result models.CRAResult) error {
+	// Create a wrapper struct that includes days_remaining.
+	wrapper := struct {
+		*models.CRAResult
+		DaysRemaining int `json:"days_remaining,omitempty"`
+	}{
+		CRAResult: &result,
+	}
+
+	// Calculate days remaining if deadline is set.
+	if result.NextDeadline != "" {
+		deadline, err := time.Parse("2006-01-02", result.NextDeadline)
+		if err == nil {
+			wrapper.DaysRemaining = int(time.Until(deadline).Hours() / 24)
+		}
+	}
+
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(result)
+	return enc.Encode(wrapper)
 }
 
 func statusTag(s models.CRACheckStatus) string {

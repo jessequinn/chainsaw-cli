@@ -6,6 +6,86 @@ The format is based on [Common Changelog](https://common-changelog.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-29
+
+### Added
+
+Add `chainsaw check` unified meta-command running scan, comply, and
+supply-chain analysis in a single invocation with combined exit code
+
+Add CRA Article 14 incident reporting validation: CSIRT contact,
+security contact, SECURITY.md keyword scanning, security.txt presence,
+24-hour early warning process readiness
+
+Add CRA product category classification checker (Annex III/IV):
+default, important-class-1, important-class-2, critical with
+conformity assessment requirements per Article 32
+
+Add transitive/direct dependency distinction: `Direct` field on
+Component, Go scanner marks indirect deps, CycloneDX SBOM sets scope
+(required/optional), SBOM checker reports direct vs transitive counts
+
+Add secure-by-default configuration checks (CRA Annex I Part 1):
+Dockerfile USER directive, GitHub Actions permissions scope
+
+Add CRA compliance trend tracking: stores assessment history in
+`.chainsaw/history/`, `--trend` flag on comply shows score progression
+
+Add incident response playbook generator (`INCIDENT-RESPONSE.md`) to
+`init-security` with ENISA Single Reporting Platform details, Article
+14 reporting timelines (24h/72h/14d), and internal escalation template
+
+Add GitHub Actions security analysis: detect unpinned actions using
+mutable tags instead of commit SHA pins
+
+Add Dockerfile security linting: missing USER directive, sensitive
+port exposure (SSH, MySQL, PostgreSQL, Redis, MongoDB), unpinned
+apt-get installs
+
+Add `--output`/`-o` flag to all commands (scan, comply, supply-chain,
+check, sbom, diff) for writing output to file instead of stdout
+
+Add `--quiet`/`-q` flag to scan, comply, supply-chain, and check
+commands to suppress progress messages
+
+Add scan progress indication to stderr showing current scanner,
+vulnerability query status, and analysis phase
+
+Add CRA deadline countdown to compliance reports showing days
+remaining until Article 14 deadline with urgency level
+(RED/YELLOW/green)
+
+Add policy file schema validation: validates fail_on severity, CRA
+score ranges, supply-chain score ranges, licence mode, and detects
+unknown YAML fields
+
+Add exponential backoff retry logic to OSV API client (max 3 retries,
+jitter, Retry-After header support)
+
+Add graceful degradation: scanner and API failures collect warnings
+instead of aborting the entire scan
+
+Extract shared scan logic into `internal/engine` package with
+`ResolveScanners()` and `LoadPolicy()` functions
+
+### Fixed
+
+Fix CVSS vector string parsing: properly compute base scores from
+CVSS v3.x vector strings (e.g. `CVSS:3.1/AV:N/AC:L/...`) instead
+of returning 0 and classifying as UNKNOWN severity
+
+Fix `comply` command to read CRA config from policy file (was
+creating empty `CRAConfig{}` ignoring all user-provided manufacturer,
+security-contact, support-end-date, csirt-contact fields)
+
+### Changed
+
+**Breaking:** Remove deprecated `licenses` policy field; use
+`licences` with `deny-list` instead of `deny`
+
+Unify `LicensePolicy`/`LicencePolicy` into single `LicencePolicy`
+type with mode, allow-list, deny-list, and per-ecosystem overrides
+
 ## [0.3.3] - 2026-05-29
 
 ### Changed

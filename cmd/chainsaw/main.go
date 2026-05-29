@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -12,13 +12,14 @@ import (
 	"github.com/chainsaw-dev/chainsaw/internal/analysis"
 	"github.com/chainsaw-dev/chainsaw/internal/cra"
 	"github.com/chainsaw-dev/chainsaw/internal/diff"
+	"github.com/chainsaw-dev/chainsaw/internal/engine"
 	"github.com/chainsaw-dev/chainsaw/internal/hygiene"
 	"github.com/chainsaw-dev/chainsaw/internal/licence"
 	"github.com/chainsaw-dev/chainsaw/internal/initcmd"
-	"github.com/chainsaw-dev/chainsaw/internal/policy"
 	"github.com/chainsaw-dev/chainsaw/internal/report"
 	"github.com/chainsaw-dev/chainsaw/internal/sbom"
 	"github.com/chainsaw-dev/chainsaw/internal/scanner"
+	"github.com/chainsaw-dev/chainsaw/internal/trend"
 	"github.com/chainsaw-dev/chainsaw/internal/vuln"
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
 )
@@ -45,6 +46,7 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(versionCmd())
 	root.AddCommand(complyCmd())
 	root.AddCommand(supplyChainCmd())
+	root.AddCommand(checkCmd())
 	root.AddCommand(initSecurityCmd())
 	root.AddCommand(initCICmd())
 	root.AddCommand(diffCmd())
@@ -54,10 +56,11 @@ func rootCmd() *cobra.Command {
 
 func diffCmd() *cobra.Command {
 	var (
-		basePath string
-		headPath string
-		format   string
-		failOn   string
+		basePath   string
+		headPath   string
+		format     string
+		failOn     string
+		outputPath string
 	)
 
 	cmd := &cobra.Command{
@@ -65,6 +68,19 @@ func diffCmd() *cobra.Command {
 		Short: "Compare two scan results to show changes",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+
+			// Determine output writer.
+			var w *os.File
+			if outputPath != "" {
+				f, err := os.Create(outputPath)
+				if err != nil {
+					return fmt.Errorf("creating output file: %w", err)
+				}
+				defer f.Close()
+				w = f
+			} else {
+				w = os.Stdout
+			}
 
 			base, err := diff.LoadScanResult(basePath)
 			if err != nil {
@@ -80,15 +96,15 @@ func diffCmd() *cobra.Command {
 
 			switch format {
 			case "json":
-				if err := diff.WriteDiffJSON(ctx, os.Stdout, result); err != nil {
+				if err := diff.WriteDiffJSON(ctx, w, result); err != nil {
 					return err
 				}
 			case "markdown":
-				if err := diff.WriteDiffMarkdown(ctx, os.Stdout, result); err != nil {
+				if err := diff.WriteDiffMarkdown(ctx, w, result); err != nil {
 					return err
 				}
 			default:
-				if err := diff.WriteDiffReport(ctx, os.Stdout, result); err != nil {
+				if err := diff.WriteDiffReport(ctx, w, result); err != nil {
 					return err
 				}
 			}
@@ -110,6 +126,7 @@ func diffCmd() *cobra.Command {
 	cmd.Flags().StringVar(&headPath, "head", "", "Path to head scan JSON file (required)")
 	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json, markdown")
 	cmd.Flags().StringVar(&failOn, "fail-on", "", "Severity threshold for new vulnerabilities to trigger exit code 1")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
 	_ = cmd.MarkFlagRequired("base")
 	_ = cmd.MarkFlagRequired("head")
 
@@ -176,6 +193,8 @@ func scanCmd() *cobra.Command {
 		ecosystem      string
 		policyPath     string
 		detectLicences bool
+		outputPath     string
+		quiet          bool
 	)
 
 	cmd := &cobra.Command{
@@ -189,8 +208,21 @@ func scanCmd() *cobra.Command {
 				root = args[0]
 			}
 
+			// Determine output writer.
+			var w *os.File
+			if outputPath != "" {
+				f, err := os.Create(outputPath)
+				if err != nil {
+					return fmt.Errorf("creating output file: %w", err)
+				}
+				defer f.Close()
+				w = f
+			} else {
+				w = os.Stdout
+			}
+
 			// Load policy.
-			pol, err := loadPolicy(ctx, policyPath)
+			pol, err := engine.LoadPolicy(ctx, policyPath)
 			if err != nil {
 				return err
 			}
@@ -201,41 +233,52 @@ func scanCmd() *cobra.Command {
 			}
 
 			// Resolve scanners, optionally filtered by ecosystem.
-			scanners := resolveScanners(ecosystem)
+			scanners := engine.ResolveScanners(ecosystem)
 			if len(scanners) == 0 {
 				return fmt.Errorf("no scanners registered for ecosystems: %s", ecosystem)
 			}
 
 		// Detect and parse dependencies.
 		var components []models.Component
+		var warnings []string
 		for _, s := range scanners {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Scanning %s...\n", s.Ecosystem())
+			}
 			manifests, err := s.DetectManifests(ctx, root)
 			if err != nil {
-				return fmt.Errorf("detecting manifests (%s): %w", s.Ecosystem(), err)
+				warnings = append(warnings, fmt.Sprintf("scanner %s: %v", s.Ecosystem(), err))
+				continue
 			}
 			for _, m := range manifests {
 				deps, err := s.ParseDependencies(ctx, m)
 				if err != nil {
-					return fmt.Errorf("parsing %s: %w", m, err)
+					warnings = append(warnings, fmt.Sprintf("parsing %s: %v", m, err))
+					continue
 				}
 				components = append(components, deps...)
 			}
 		}
 
 			// Vulnerability matching.
+			if !quiet && len(components) > 0 {
+				fmt.Fprintf(os.Stderr, "Querying vulnerabilities for %d components...\n", len(components))
+			}
 			client := vuln.NewClient()
 			matcher := vuln.NewMatcher(client)
 			findings, err := matcher.Match(ctx, components)
 			if err != nil {
-				return fmt.Errorf("vulnerability matching: %w", err)
+				warnings = append(warnings, fmt.Sprintf("vulnerability matching: %v", err))
 			}
 
-			// Hygiene checks.
-			var hygieneFindings []models.Finding
-			hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
-			hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+		// Hygiene checks.
+		var hygieneFindings []models.Finding
+		hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckActionSecurity(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckDockerfiles(root)...)
 
-			// Licence detection (optional).
+		// Licence detection (optional).
 			if detectLicences {
 				det := licence.NewDetector()
 				if _, err := det.DetectAll(ctx, components); err != nil {
@@ -254,6 +297,7 @@ func scanCmd() *cobra.Command {
 				Components:  components,
 				Findings:    findings,
 				Hygiene:     hygieneFindings,
+				Warnings:    warnings,
 				Timestamp:   time.Now(),
 				ToolVersion: version,
 			}
@@ -262,7 +306,7 @@ func scanCmd() *cobra.Command {
 			_, exitCode := pol.Evaluate(result)
 
 			// Output.
-			if err := writeOutput(ctx, os.Stdout, format, result); err != nil {
+			if err := writeOutput(ctx, w, format, result); err != nil {
 				return err
 			}
 
@@ -278,12 +322,17 @@ func scanCmd() *cobra.Command {
 	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Comma-separated ecosystems to scan (e.g. go,npm)")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
 	cmd.Flags().BoolVar(&detectLicences, "detect-licences", false, "Detect licences for dependencies via registry APIs")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
 
 	return cmd
 }
 
 func sbomCmd() *cobra.Command {
-	var format string
+	var (
+		format     string
+		outputPath string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "sbom [path]",
@@ -294,6 +343,19 @@ func sbomCmd() *cobra.Command {
 			root := "."
 			if len(args) > 0 {
 				root = args[0]
+			}
+
+			// Determine output writer.
+			var w *os.File
+			if outputPath != "" {
+				f, err := os.Create(outputPath)
+				if err != nil {
+					return fmt.Errorf("creating output file: %w", err)
+				}
+				defer f.Close()
+				w = f
+			} else {
+				w = os.Stdout
 			}
 
 		components, err := scanner.DetectAll(ctx, root)
@@ -307,11 +369,11 @@ func sbomCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("generating CycloneDX SBOM: %w", err)
 				}
-				_, err = os.Stdout.Write(data)
+				_, err = w.Write(data)
 				if err != nil {
 					return fmt.Errorf("writing SBOM: %w", err)
 				}
-				fmt.Fprintln(os.Stdout)
+				fmt.Fprintln(w)
 			default:
 				return fmt.Errorf("unsupported SBOM format: %s", format)
 			}
@@ -321,6 +383,7 @@ func sbomCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&format, "format", "cyclonedx", "SBOM format: cyclonedx")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
 
 	return cmd
 }
@@ -339,6 +402,9 @@ func complyCmd() *cobra.Command {
 	var (
 		format     string
 		policyPath string
+		showTrend  bool
+		outputPath string
+		quiet      bool
 	)
 
 	cmd := &cobra.Command{
@@ -352,45 +418,78 @@ func complyCmd() *cobra.Command {
 				root = args[0]
 			}
 
+			// Determine output writer.
+			var w *os.File
+			if outputPath != "" {
+				f, err := os.Create(outputPath)
+				if err != nil {
+					return fmt.Errorf("creating output file: %w", err)
+				}
+				defer f.Close()
+				w = f
+			} else {
+				w = os.Stdout
+			}
+
 		// Load policy to check for CRA config.
-		pol, err := loadPolicy(ctx, policyPath)
+		pol, err := engine.LoadPolicy(ctx, policyPath)
 		if err != nil {
 			return err
 		}
 
-		craConfig := &cra.CRAConfig{}
+		craConfig := &cra.CRAConfig{
+			ProductName:     pol.CRA.Manufacturer,
+			Manufacturer:    pol.CRA.Manufacturer,
+			SecurityContact: pol.CRA.SecurityContact,
+			SupportEndDate:  pol.CRA.SupportEndDate,
+			CSIRTContact:    pol.CRA.CSIRTContact,
+		}
 
 		// Detect and parse all dependencies.
-		scanners := resolveScanners("")
+		scanners := engine.ResolveScanners("")
 		var components []models.Component
+		var warnings []string
 		for _, s := range scanners {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Scanning %s...\n", s.Ecosystem())
+			}
 			manifests, err := s.DetectManifests(ctx, root)
 			if err != nil {
-				return fmt.Errorf("detecting manifests (%s): %w", s.Ecosystem(), err)
+				warnings = append(warnings, fmt.Sprintf("scanner %s: %v", s.Ecosystem(), err))
+				continue
 			}
 			for _, m := range manifests {
 				deps, err := s.ParseDependencies(ctx, m)
 				if err != nil {
-					return fmt.Errorf("parsing %s: %w", m, err)
+					warnings = append(warnings, fmt.Sprintf("parsing %s: %v", m, err))
+					continue
 				}
 				components = append(components, deps...)
 			}
 		}
 
 			// Vulnerability matching.
+			if !quiet && len(components) > 0 {
+				fmt.Fprintf(os.Stderr, "Querying vulnerabilities for %d components...\n", len(components))
+			}
 			client := vuln.NewClient()
 			matcher := vuln.NewMatcher(client)
 			findings, err := matcher.Match(ctx, components)
 			if err != nil {
-				return fmt.Errorf("vulnerability matching: %w", err)
+				warnings = append(warnings, fmt.Sprintf("vulnerability matching: %v", err))
 			}
 
-			// Hygiene checks.
-			var hygieneFindings []models.Finding
-			hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
-			hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+		// Hygiene checks.
+		var hygieneFindings []models.Finding
+		hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckActionSecurity(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckDockerfiles(root)...)
 
-			// Build assessment context and run CRA checks.
+		// Build assessment context and run CRA checks.
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Assessing CRA compliance...\n")
+			}
 			assessCtx := cra.AssessmentContext{
 				RootPath:    root,
 				Components:  components,
@@ -401,6 +500,37 @@ func complyCmd() *cobra.Command {
 			}
 			result := cra.Assess(ctx, &assessCtx)
 
+			// Save result to trend history.
+			if err := trend.SaveResult(root, result); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not save trend data: %v\n", err)
+			}
+
+			// Show trend if requested.
+			if showTrend {
+				history, err := trend.LoadHistory(root)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: could not load trend data: %v\n", err)
+				} else {
+					current := trend.TrendEntry{
+						Date:         result.Date,
+						OverallScore: result.OverallScore,
+					}
+					// Count check statuses.
+					for _, c := range result.Checks {
+						switch c.Status {
+						case models.CRAPass:
+							current.PassCount++
+						case models.CRAFail:
+							current.FailCount++
+						case models.CRAWarn:
+							current.WarnCount++
+						}
+					}
+					current.TotalChecks = len(result.Checks)
+					fmt.Fprintln(os.Stderr, trend.FormatTrend(history, current))
+				}
+			}
+
 			// Evaluate CRA result against policy.
 			pass, reason := pol.EvaluateCRA(result)
 			if !pass {
@@ -410,15 +540,18 @@ func complyCmd() *cobra.Command {
 			// Output.
 			switch format {
 			case "json":
-				return cra.WriteComplianceJSON(ctx, os.Stdout, result)
+				return cra.WriteComplianceJSON(ctx, w, result)
 			default:
-				return cra.WriteComplianceReport(ctx, os.Stdout, result)
+				return cra.WriteComplianceReport(ctx, w, result)
 			}
 		},
 	}
 
 	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
+	cmd.Flags().BoolVar(&showTrend, "trend", false, "Show CRA score trend since last assessment")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
 
 	return cmd
 }
@@ -427,6 +560,8 @@ func supplyChainCmd() *cobra.Command {
 	var (
 		format     string
 		policyPath string
+		outputPath string
+		quiet      bool
 	)
 
 	cmd := &cobra.Command{
@@ -440,30 +575,52 @@ func supplyChainCmd() *cobra.Command {
 				root = args[0]
 			}
 
+			// Determine output writer.
+			var w *os.File
+			if outputPath != "" {
+				f, err := os.Create(outputPath)
+				if err != nil {
+					return fmt.Errorf("creating output file: %w", err)
+				}
+				defer f.Close()
+				w = f
+			} else {
+				w = os.Stdout
+			}
+
 		// Load policy.
-		pol, err := loadPolicy(ctx, policyPath)
+		pol, err := engine.LoadPolicy(ctx, policyPath)
 		if err != nil {
 			return err
 		}
 
 		// Detect and parse all dependencies.
-		scanners := resolveScanners("")
+		scanners := engine.ResolveScanners("")
 		var components []models.Component
+		var warnings []string
 		for _, s := range scanners {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Scanning %s...\n", s.Ecosystem())
+			}
 			manifests, err := s.DetectManifests(ctx, root)
 			if err != nil {
-				return fmt.Errorf("detecting manifests (%s): %w", s.Ecosystem(), err)
+				warnings = append(warnings, fmt.Sprintf("scanner %s: %v", s.Ecosystem(), err))
+				continue
 			}
 			for _, m := range manifests {
 				deps, err := s.ParseDependencies(ctx, m)
 				if err != nil {
-					return fmt.Errorf("parsing %s: %w", m, err)
+					warnings = append(warnings, fmt.Sprintf("parsing %s: %v", m, err))
+					continue
 				}
 				components = append(components, deps...)
 			}
 		}
 
 		// Enrich each component with supply chain metadata.
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "Analysing supply chain...\n")
+		}
 		var enriched []models.InfraComponent
 		for _, c := range components {
 			enriched = append(enriched, analysis.EnrichComponent(c))
@@ -490,44 +647,244 @@ func supplyChainCmd() *cobra.Command {
 			// Output.
 			switch format {
 			case "json":
-				return analysis.WriteSupplyChainJSON(ctx, os.Stdout, result)
+				return analysis.WriteSupplyChainJSON(ctx, w, result)
 			default:
-				return analysis.WriteSupplyChainReport(ctx, os.Stdout, result)
+				return analysis.WriteSupplyChainReport(ctx, w, result)
 			}
 		},
 	}
 
 	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json")
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
 
 	return cmd
 }
 
-func loadPolicy(ctx context.Context, path string) (*policy.Policy, error) {
-	if path != "" {
-		return policy.LoadPolicy(ctx, path)
+func checkCmd() *cobra.Command {
+	var (
+		format     string
+		failOn     string
+		ecosystem  string
+		policyPath string
+		outputPath string
+		quiet      bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "check [path]",
+		Short: "Run scan, comply, and supply-chain checks in one invocation",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			// Determine output writer.
+			var w *os.File
+			if outputPath != "" {
+				f, err := os.Create(outputPath)
+				if err != nil {
+					return fmt.Errorf("creating output file: %w", err)
+				}
+				defer f.Close()
+				w = f
+			} else {
+				w = os.Stdout
+			}
+
+			// Load policy.
+			pol, err := engine.LoadPolicy(ctx, policyPath)
+			if err != nil {
+				return err
+			}
+
+			// Override fail-on from flag if set explicitly.
+			if cmd.Flags().Changed("fail-on") {
+				pol.FailOn = models.ParseSeverity(failOn)
+			}
+
+			// Resolve scanners, optionally filtered by ecosystem.
+			scanners := engine.ResolveScanners(ecosystem)
+			if len(scanners) == 0 {
+				return fmt.Errorf("no scanners registered for ecosystems: %s", ecosystem)
+			}
+
+			// Detect and parse dependencies.
+			var components []models.Component
+			var warnings []string
+			for _, s := range scanners {
+				if !quiet {
+					fmt.Fprintf(os.Stderr, "Scanning %s...\n", s.Ecosystem())
+				}
+				manifests, err := s.DetectManifests(ctx, root)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("scanner %s: %v", s.Ecosystem(), err))
+					continue
+				}
+				for _, m := range manifests {
+					deps, err := s.ParseDependencies(ctx, m)
+					if err != nil {
+						warnings = append(warnings, fmt.Sprintf("parsing %s: %v", m, err))
+						continue
+					}
+					components = append(components, deps...)
+				}
+			}
+
+			// Vulnerability matching.
+			if !quiet && len(components) > 0 {
+				fmt.Fprintf(os.Stderr, "Querying vulnerabilities for %d components...\n", len(components))
+			}
+			client := vuln.NewClient()
+			matcher := vuln.NewMatcher(client)
+			findings, err := matcher.Match(ctx, components)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("vulnerability matching: %v", err))
+			}
+
+		// Hygiene checks.
+		var hygieneFindings []models.Finding
+		hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckActionSecurity(components)...)
+		hygieneFindings = append(hygieneFindings, hygiene.CheckDockerfiles(root)...)
+
+		// Build scan result.
+			scanResult := models.ScanResult{
+				Components:  components,
+				Findings:    findings,
+				Hygiene:     hygieneFindings,
+				Warnings:    warnings,
+				Timestamp:   time.Now(),
+				ToolVersion: version,
+			}
+
+			// CRA assessment.
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Assessing CRA compliance...\n")
+			}
+			craConfig := &cra.CRAConfig{
+				ProductName:     pol.CRA.Manufacturer,
+				Manufacturer:    pol.CRA.Manufacturer,
+				SecurityContact: pol.CRA.SecurityContact,
+				SupportEndDate:  pol.CRA.SupportEndDate,
+				CSIRTContact:    pol.CRA.CSIRTContact,
+			}
+			assessCtx := cra.AssessmentContext{
+				RootPath:    root,
+				Components:  components,
+				Findings:    findings,
+				Hygiene:     hygieneFindings,
+				ToolVersion: version,
+				Config:      craConfig,
+			}
+			craResult := cra.Assess(ctx, &assessCtx)
+
+			// Supply chain analysis.
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Analysing supply chain...\n")
+			}
+			var enriched []models.InfraComponent
+			for _, c := range components {
+				enriched = append(enriched, analysis.EnrichComponent(c))
+			}
+			pinningScore := analysis.CalculatePinningScore(enriched)
+			blastRadii := analysis.AssessAll(enriched)
+			scResult := models.SupplyChainResult{
+				Components:   enriched,
+				PinningScore: pinningScore,
+				BlastRadii:   blastRadii,
+				Timestamp:    time.Now(),
+				ToolVersion:  version,
+			}
+
+			// Evaluate policies.
+			_, scanExitCode := pol.Evaluate(scanResult)
+			craPass, _ := pol.EvaluateCRA(craResult)
+			scPass, _ := pol.EvaluateSupplyChain(scResult)
+
+			// Output.
+			switch format {
+			case "json":
+				return writeCheckJSON(ctx, w, scanResult, craResult, scResult)
+			default:
+				return writeCheckTable(ctx, w, scanResult, craResult, scResult)
+			}
+
+			// Exit code: 0 if all pass, 1 if any fail.
+			if scanExitCode != 0 || !craPass || !scPass {
+				os.Exit(1)
+			}
+			return nil
+		},
 	}
-	// Try default policy file.
-	if _, err := os.Stat(".chainsaw.yaml"); err == nil {
-		return policy.LoadPolicy(ctx, ".chainsaw.yaml")
-	}
-	return policy.DefaultPolicy(), nil
+
+	cmd.Flags().StringVar(&format, "format", "table", "Output format: table, json")
+	cmd.Flags().StringVar(&failOn, "fail-on", "", "Minimum severity to fail on (CRITICAL, HIGH, MEDIUM, LOW)")
+	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Comma-separated ecosystems to scan (e.g. go,npm)")
+	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
+
+	return cmd
 }
 
-func resolveScanners(ecosystemFlag string) []scanner.Scanner {
-	if ecosystemFlag == "" {
-		return scanner.GetAll()
+func writeCheckTable(ctx context.Context, w *os.File, scanResult models.ScanResult, craResult models.CRAResult, scResult models.SupplyChainResult) error {
+	fmt.Fprintln(w, "=== Vulnerability Scan ===")
+	if err := report.WriteTable(ctx, w, scanResult); err != nil {
+		return err
 	}
 
-	ecos := strings.Split(ecosystemFlag, ",")
-	var out []scanner.Scanner
-	for _, e := range ecos {
-		eco := models.Ecosystem(strings.TrimSpace(e))
-		if s, ok := scanner.GetByEcosystem(eco); ok {
-			out = append(out, s)
-		}
+	fmt.Fprintln(w, "\n=== CRA Compliance ===")
+	if err := cra.WriteComplianceReport(ctx, w, craResult); err != nil {
+		return err
 	}
-	return out
+
+	fmt.Fprintln(w, "\n=== Supply Chain ===")
+	if err := analysis.WriteSupplyChainReport(ctx, w, scResult); err != nil {
+		return err
+	}
+
+	// Summary.
+	vulnCount := len(scanResult.Findings)
+	fmt.Fprintf(w, "\n=== Summary ===\n")
+	fmt.Fprintf(w, "Components: %d | Vulnerabilities: %d | CRA Score: %d%% | Pinning Score: %d%%\n",
+		len(scanResult.Components), vulnCount, craResult.OverallScore, scResult.PinningScore)
+
+	return nil
+}
+
+func writeCheckJSON(ctx context.Context, w *os.File, scanResult models.ScanResult, craResult models.CRAResult, scResult models.SupplyChainResult) error {
+	type CheckOutput struct {
+		Scan         models.ScanResult         `json:"scan"`
+		Compliance   models.CRAResult          `json:"compliance"`
+		SupplyChain  models.SupplyChainResult  `json:"supply_chain"`
+		Summary      map[string]interface{}   `json:"summary"`
+	}
+
+	output := CheckOutput{
+		Scan:        scanResult,
+		Compliance:  craResult,
+		SupplyChain: scResult,
+		Summary: map[string]interface{}{
+			"components":     len(scanResult.Components),
+			"vulnerabilities": len(scanResult.Findings),
+			"cra_score":      craResult.OverallScore,
+			"pinning_score":  scResult.PinningScore,
+		},
+	}
+
+	// Marshal to JSON and write.
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(output); err != nil {
+		return fmt.Errorf("encoding JSON: %w", err)
+	}
+	return nil
 }
 
 func initSecurityCmd() *cobra.Command {

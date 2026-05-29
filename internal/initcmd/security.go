@@ -101,6 +101,82 @@ func GenerateChainsawYAML(cfg SecurityConfig) string {
 	return b.String()
 }
 
+// GenerateIncidentResponse generates INCIDENT-RESPONSE.md for CRA Article 14.
+func GenerateIncidentResponse(cfg SecurityConfig) string {
+	var b strings.Builder
+	b.WriteString("# Incident Response Playbook\n\n")
+
+	b.WriteString("## CRA Article 14 — Vulnerability Reporting Obligations\n\n")
+	b.WriteString("This playbook documents the incident response process required by the\n")
+	b.WriteString("EU Cyber Resilience Act (Regulation (EU) 2024/2847).\n\n")
+
+	b.WriteString("## Reporting Timeline\n\n")
+	b.WriteString("| Deadline | Requirement | Recipient |\n")
+	b.WriteString("|----------|-------------|----------|\n")
+	b.WriteString("| 24 hours | Early warning notification | ENISA / National CSIRT |\n")
+	b.WriteString("| 72 hours | Vulnerability notification update | ENISA / National CSIRT |\n")
+	b.WriteString("| 14 days  | Final report | ENISA / National CSIRT |\n\n")
+
+	b.WriteString("## ENISA Single Reporting Platform\n\n")
+	b.WriteString("- **URL:** https://vulnerability.enisa.europa.eu (TODO: confirm URL when platform launches)\n")
+
+	csirtContact := cfg.CSIRTContact
+	if csirtContact == "" {
+		csirtContact = "TODO: Set CSIRT contact"
+	}
+	b.WriteString(fmt.Sprintf("- **National CSIRT Contact:** %s\n", csirtContact))
+
+	securityEmail := cfg.SecurityEmail
+	if securityEmail == "" {
+		securityEmail = "TODO: Set security email"
+	}
+	b.WriteString(fmt.Sprintf("- **Manufacturer Security Contact:** %s\n\n", securityEmail))
+
+	b.WriteString("## Early Warning Notification (24h)\n\n")
+	b.WriteString("Required fields:\n")
+	b.WriteString("1. Product identification (name, version, affected versions)\n")
+	b.WriteString("2. General description of the vulnerability\n")
+	b.WriteString("3. Whether the vulnerability is being actively exploited\n")
+	b.WriteString("4. Severity assessment (CVSS score if available)\n")
+	b.WriteString("5. Preliminary impact assessment\n\n")
+
+	b.WriteString("## Vulnerability Notification (72h)\n\n")
+	b.WriteString("Required fields (in addition to early warning):\n")
+	b.WriteString("1. Detailed technical description\n")
+	b.WriteString("2. Affected components and dependencies\n")
+	b.WriteString("3. Known mitigations or workarounds\n")
+	b.WriteString("4. Estimated timeline for fix availability\n")
+	b.WriteString("5. Corrective measures taken or planned\n\n")
+
+	b.WriteString("## Final Report (14 days)\n\n")
+	b.WriteString("Required fields:\n")
+	b.WriteString("1. Root cause analysis\n")
+	b.WriteString("2. Complete remediation details\n")
+	b.WriteString("3. Fixed version information\n")
+	b.WriteString("4. Lessons learned\n")
+	b.WriteString("5. Updated SBOM reflecting the fix\n\n")
+
+	b.WriteString("## Internal Escalation Contacts\n\n")
+	b.WriteString("| Role | Name | Contact |\n")
+	b.WriteString("|------|------|----------|\n")
+	b.WriteString("| Security Lead | TODO | TODO |\n")
+	b.WriteString("| Engineering Lead | TODO | TODO |\n")
+	b.WriteString("| Legal/Compliance | TODO | TODO |\n")
+	b.WriteString("| Communications | TODO | TODO |\n\n")
+
+	b.WriteString("## Checklist\n\n")
+	b.WriteString("- [ ] Vulnerability confirmed and triaged\n")
+	b.WriteString("- [ ] CSIRT notified within 24 hours\n")
+	b.WriteString("- [ ] 72-hour update submitted\n")
+	b.WriteString("- [ ] Fix developed and tested\n")
+	b.WriteString("- [ ] Security advisory published\n")
+	b.WriteString("- [ ] 14-day final report submitted\n")
+	b.WriteString("- [ ] SBOM updated\n")
+	b.WriteString("- [ ] Affected users notified\n")
+
+	return b.String()
+}
+
 // WriteSecurityFiles writes all security files to the given root directory.
 // Returns a list of files written and any error.
 func WriteSecurityFiles(root string, cfg SecurityConfig) ([]string, error) {
@@ -113,6 +189,7 @@ func WriteSecurityFiles(root string, cfg SecurityConfig) ([]string, error) {
 		{"SECURITY.md", GenerateSecurityMD(cfg)},
 		{filepath.Join(".well-known", "security.txt"), GenerateSecurityTxt(cfg)},
 		{".chainsaw.yaml", GenerateChainsawYAML(cfg)},
+		{"INCIDENT-RESPONSE.md", GenerateIncidentResponse(cfg)},
 	}
 
 	var written []string

@@ -5,7 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
+	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
@@ -14,7 +18,27 @@ import (
 const (
 	osvAPIURL   = "https://api.osv.dev/v1/querybatch"
 	maxBatchSize = 1000
+	maxRetries   = 3
 )
+
+// isRetryable returns true if the HTTP status code indicates a transient error
+// that should be retried.
+func isRetryable(statusCode int) bool {
+	switch statusCode {
+	case 429, 500, 502, 503, 504:
+		return true
+	}
+	return false
+}
+
+// backoffDelay calculates exponential backoff with jitter.
+// For attempt 0: 1s, attempt 1: 2s, attempt 2: 4s, etc.
+// Jitter of up to 500ms is added to prevent thundering herd.
+func backoffDelay(base time.Duration, attempt int) time.Duration {
+	delay := base * time.Duration(1<<uint(attempt))
+	jitter := time.Duration(rand.Int63n(int64(500 * time.Millisecond)))
+	return delay + jitter
+}
 
 type osvQuery struct {
 	Package   osvPackage `json:"package"`
@@ -88,6 +112,59 @@ func NewClient() *Client {
 	}
 }
 
+// doWithRetry wraps an HTTP request with exponential backoff retry logic.
+// It retries on transient errors (429, 5xx) and respects the Retry-After header.
+func (c *Client) doWithRetry(ctx context.Context, req *http.Request, body []byte) (*http.Response, error) {
+	baseDelay := 1 * time.Second
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Reset body for retry
+			req.Body = io.NopCloser(bytes.NewReader(body))
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if attempt == maxRetries {
+				return nil, err
+			}
+			delay := backoffDelay(baseDelay, attempt)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+				continue
+			}
+		}
+
+		// Check if retryable status
+		if !isRetryable(resp.StatusCode) {
+			return resp, nil
+		}
+
+		resp.Body.Close()
+
+		if attempt == maxRetries {
+			return nil, fmt.Errorf("osv query returned status %d after %d retries", resp.StatusCode, maxRetries)
+		}
+
+		delay := backoffDelay(baseDelay, attempt)
+		// Honour Retry-After header
+		if ra := resp.Header.Get("Retry-After"); ra != "" {
+			if seconds, err := strconv.Atoi(ra); err == nil {
+				delay = time.Duration(seconds) * time.Second
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return nil, fmt.Errorf("osv query: max retries exceeded")
+}
+
 // QueryBatch looks up vulnerabilities for the given components via OSV.
 func (c *Client) QueryBatch(ctx context.Context, components []models.Component) ([]models.Finding, error) {
 	if len(components) == 0 {
@@ -150,15 +227,11 @@ func (c *Client) queryBatch(ctx context.Context, components []models.Component) 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doWithRetry(ctx, req, body)
 	if err != nil {
 		return nil, fmt.Errorf("osv query: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("osv query returned status %d", resp.StatusCode)
-	}
 
 	var batchResp osvBatchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&batchResp); err != nil {
@@ -214,11 +287,100 @@ func extractSeverity(vuln osvVulnerability) string {
 }
 
 func parseCVSSScore(score string) float64 {
-	// CVSS vector strings start with "CVSS:3.x/..." but the score field
-	// can also be a plain numeric value. Try numeric first.
+	// Try plain numeric first (backward compatibility)
 	var f float64
 	if _, err := fmt.Sscanf(score, "%f", &f); err == nil {
 		return f
+	}
+
+	// Try CVSS v3 vector (e.g., "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
+	if len(score) > 0 && score[0:1] == "C" {
+		if v3Score := parseCVSSv3Vector(score); v3Score > 0 {
+			return v3Score
+		}
+	}
+
+	return 0
+}
+
+func parseCVSSv3Vector(vector string) float64 {
+	// Parse CVSS v3.x vector string and compute base score
+	// Format: CVSS:3.x/AV:x/AC:x/PR:x/UI:x/S:x/C:x/I:x/A:x
+	metrics := make(map[string]string)
+
+	// Split by "/" and parse each metric
+	parts := bytes.Split([]byte(vector), []byte("/"))
+	for _, part := range parts {
+		kv := bytes.Split(part, []byte(":"))
+		if len(kv) == 2 {
+			key := string(kv[0])
+			val := string(kv[1])
+			metrics[key] = val
+		}
+	}
+
+	// Extract metric values with defaults
+	av := getMetricValue(metrics["AV"], map[string]float64{"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20})
+	ac := getMetricValue(metrics["AC"], map[string]float64{"L": 0.77, "H": 0.44})
+	ui := getMetricValue(metrics["UI"], map[string]float64{"N": 0.85, "R": 0.62})
+	scope := metrics["S"]
+
+	// PR depends on scope
+	var pr float64
+	if scope == "C" {
+		pr = getMetricValue(metrics["PR"], map[string]float64{"N": 0.85, "L": 0.68, "H": 0.50})
+	} else {
+		pr = getMetricValue(metrics["PR"], map[string]float64{"N": 0.85, "L": 0.62, "H": 0.27})
+	}
+
+	// CIA metrics
+	c := getMetricValue(metrics["C"], map[string]float64{"H": 0.56, "L": 0.22, "N": 0})
+	i := getMetricValue(metrics["I"], map[string]float64{"H": 0.56, "L": 0.22, "N": 0})
+	a := getMetricValue(metrics["A"], map[string]float64{"H": 0.56, "L": 0.22, "N": 0})
+
+	// Calculate ISS (Impact Sub Score)
+	iss := 1 - ((1-c)*(1-i)*(1-a))
+
+	// Calculate Impact
+	var impact float64
+	if scope == "C" {
+		// Scope Changed
+		impact = 7.52*(iss-0.029) - 3.25*math.Pow(iss-0.02, 15)
+	} else {
+		// Scope Unchanged
+		impact = 6.42 * iss
+	}
+
+	// If impact <= 0, base score is 0
+	if impact <= 0 {
+		return 0
+	}
+
+	// Calculate Exploitability
+	exploitability := 8.22 * av * ac * pr * ui
+
+	// Calculate Base Score
+	var baseScore float64
+	if scope == "C" {
+		// Scope Changed
+		baseScore = 1.08 * (impact + exploitability)
+	} else {
+		// Scope Unchanged
+		baseScore = impact + exploitability
+	}
+
+	// Cap at 10.0
+	if baseScore > 10.0 {
+		baseScore = 10.0
+	}
+
+	// Round up to nearest 0.1 using ceiling
+	return math.Ceil(baseScore*10) / 10
+}
+
+func getMetricValue(metric string, mapping map[string]float64) float64 {
+	if val, ok := mapping[metric]; ok {
+		return val
 	}
 	return 0
 }

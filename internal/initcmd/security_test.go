@@ -66,6 +66,50 @@ func TestGenerateChainsawYAML(t *testing.T) {
 	}
 }
 
+func TestGenerateIncidentResponse(t *testing.T) {
+	cfg := DefaultSecurityConfig()
+	cfg.CSIRTContact = "csirt@example.com"
+	cfg.SecurityEmail = "sec@acme.com"
+	out := GenerateIncidentResponse(cfg)
+
+	required := []string{
+		"# Incident Response Playbook",
+		"CRA Article 14",
+		"Vulnerability Reporting Obligations",
+		"Reporting Timeline",
+		"24 hours",
+		"72 hours",
+		"14 days",
+		"ENISA Single Reporting Platform",
+		"csirt@example.com",
+		"sec@acme.com",
+		"Early Warning Notification",
+		"Vulnerability Notification",
+		"Final Report",
+		"Internal Escalation Contacts",
+		"Checklist",
+	}
+	for _, s := range required {
+		if !strings.Contains(out, s) {
+			t.Errorf("INCIDENT-RESPONSE.md missing %q", s)
+		}
+	}
+}
+
+func TestGenerateIncidentResponse_EmptyContacts(t *testing.T) {
+	cfg := DefaultSecurityConfig()
+	cfg.CSIRTContact = ""
+	cfg.SecurityEmail = ""
+	out := GenerateIncidentResponse(cfg)
+
+	if !strings.Contains(out, "TODO: Set CSIRT contact") {
+		t.Error("missing TODO for CSIRT contact")
+	}
+	if !strings.Contains(out, "TODO: Set security email") {
+		t.Error("missing TODO for security email")
+	}
+}
+
 func TestWriteSecurityFiles(t *testing.T) {
 	dir := t.TempDir()
 	cfg := DefaultSecurityConfig()
@@ -79,6 +123,7 @@ func TestWriteSecurityFiles(t *testing.T) {
 		"SECURITY.md",
 		filepath.Join(".well-known", "security.txt"),
 		".chainsaw.yaml",
+		"INCIDENT-RESPONSE.md",
 	}
 
 	if len(written) != len(expected) {

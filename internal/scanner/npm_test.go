@@ -85,24 +85,28 @@ func TestNpmScanner_ParseDependencies(t *testing.T) {
 		version   string
 		purl      string
 		integrity string
+		direct    bool
 	}{
 		{
 			name:      "@babel/core",
 			version:   "7.24.0",
 			purl:      "pkg:npm/%40babel/core@7.24.0",
 			integrity: "sha512-fQfkg0Gjkza3nf0c7/w6Xf34BW4YvzNfACRLmmb7XRLa6XHdR+K9AlJlxneFfWYf6uhOzuzZVTjF/8KfndRDA==",
+			direct:    false,
 		},
 		{
 			name:      "express",
 			version:   "4.18.2",
 			purl:      "pkg:npm/express@4.18.2",
 			integrity: "sha512-5/PsL6iGPdfQ/lKM1UuielYgv3BUoJfz1aUwU9vHZ+J7gyvwdQXFEBIEIaxeGf0GIcreATNyBExtalisDbuMg==",
+			direct:    false,
 		},
 		{
 			name:      "lodash",
 			version:   "4.17.21",
 			purl:      "pkg:npm/lodash@4.17.21",
 			integrity: "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5cvA==",
+			direct:    false,
 		},
 	}
 
@@ -123,6 +127,9 @@ func TestNpmScanner_ParseDependencies(t *testing.T) {
 			}
 			if c.Hash != tt.integrity {
 				t.Errorf("Hash = %q, want %q", c.Hash, tt.integrity)
+			}
+			if c.Direct != tt.direct {
+				t.Errorf("Direct = %v, want %v", c.Direct, tt.direct)
 			}
 		})
 	}

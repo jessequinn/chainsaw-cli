@@ -149,6 +149,7 @@ func parseDockerImageRef(ref string) (models.Component, bool) {
 		Version:   version,
 		Ecosystem: models.EcosystemDocker,
 		PkgURL:    purl,
+		Direct:    false,
 	}
 	if digest != "" {
 		c.Hash = digest

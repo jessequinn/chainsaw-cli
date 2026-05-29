@@ -17,8 +17,8 @@ func TestLoadPolicy(t *testing.T) {
 fail_on: HIGH
 ignore:
   - CVE-2024-0001
-licenses:
-  deny:
+licences:
+  deny-list:
     - GPL-3.0
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -35,8 +35,8 @@ licenses:
 	if len(p.Ignore) != 1 || p.Ignore[0] != "CVE-2024-0001" {
 		t.Errorf("Ignore = %v, want [CVE-2024-0001]", p.Ignore)
 	}
-	if len(p.Licenses.Deny) != 1 || p.Licenses.Deny[0] != "GPL-3.0" {
-		t.Errorf("Licenses.Deny = %v, want [GPL-3.0]", p.Licenses.Deny)
+	if len(p.Licences.DenyList) != 1 || p.Licences.DenyList[0] != "GPL-3.0" {
+		t.Errorf("Licences.DenyList = %v, want [GPL-3.0]", p.Licences.DenyList)
 	}
 }
 
@@ -55,8 +55,8 @@ func TestDefaultPolicy(t *testing.T) {
 	if len(p.Ignore) != 0 {
 		t.Errorf("Ignore = %v, want empty", p.Ignore)
 	}
-	if len(p.Licenses.Deny) != 0 {
-		t.Errorf("Licenses.Deny = %v, want empty", p.Licenses.Deny)
+	if len(p.Licences.DenyList) != 0 {
+		t.Errorf("Licences.DenyList = %v, want empty", p.Licences.DenyList)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestPolicy_Evaluate_IgnoredCVE(t *testing.T) {
 func TestPolicy_Evaluate_DeniedLicence(t *testing.T) {
 	p := &Policy{
 		FailOn:   models.SeverityHigh,
-		Licenses: LicensePolicy{Deny: []string{"GPL-3.0"}},
+		Licences: LicencePolicy{DenyList: []string{"GPL-3.0"}},
 	}
 	result := models.ScanResult{
 		Components: []models.Component{{
@@ -281,4 +281,151 @@ func TestDefaultPolicy_V2Fields(t *testing.T) {
 	if p.Licences.Mode != "deny" {
 		t.Errorf("Licences.Mode = %q, want %q", p.Licences.Mode, "deny")
 	}
+}
+
+func TestLoadPolicy_invalidSeverity(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+fail_on: HIHG
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	_, err := LoadPolicy(context.Background(), path)
+	if err == nil {
+		t.Fatal("expected error for invalid severity, got nil")
+	}
+	if !contains(err.Error(), "invalid fail_on severity") {
+		t.Errorf("error message = %q, want to contain 'invalid fail_on severity'", err.Error())
+	}
+}
+
+func TestLoadPolicy_invalidCRAScore(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+cra:
+  required-score: 150
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	_, err := LoadPolicy(context.Background(), path)
+	if err == nil {
+		t.Fatal("expected error for invalid CRA score, got nil")
+	}
+	if !contains(err.Error(), "cra.required-score must be between 0 and 100") {
+		t.Errorf("error message = %q, want to contain 'cra.required-score must be between 0 and 100'", err.Error())
+	}
+}
+
+func TestLoadPolicy_invalidSupplyChainScore(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+supply-chain:
+  min-pinning-score: -10
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	_, err := LoadPolicy(context.Background(), path)
+	if err == nil {
+		t.Fatal("expected error for invalid supply chain score, got nil")
+	}
+	if !contains(err.Error(), "supply-chain.min-pinning-score must be between 0 and 100") {
+		t.Errorf("error message = %q, want to contain 'supply-chain.min-pinning-score must be between 0 and 100'", err.Error())
+	}
+}
+
+func TestLoadPolicy_invalidLicenceMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+licences:
+  mode: "block"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	_, err := LoadPolicy(context.Background(), path)
+	if err == nil {
+		t.Fatal("expected error for invalid licence mode, got nil")
+	}
+	if !contains(err.Error(), "licences.mode must be \"allow\" or \"deny\"") {
+		t.Errorf("error message = %q, want to contain 'licences.mode must be \"allow\" or \"deny\"'", err.Error())
+	}
+}
+
+func TestLoadPolicy_unknownField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+fail_on: HIGH
+unknown_field: true
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	_, err := LoadPolicy(context.Background(), path)
+	if err == nil {
+		t.Fatal("expected error for unknown field, got nil")
+	}
+	if !contains(err.Error(), "unknown") {
+		t.Errorf("error message = %q, want to contain 'unknown'", err.Error())
+	}
+}
+
+func TestLoadPolicy_validPolicy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+fail_on: HIGH
+ignore:
+  - CVE-2024-0001
+cra:
+  required-score: 75
+supply-chain:
+  min-pinning-score: 80
+licences:
+  mode: "deny"
+  deny-list:
+    - GPL-3.0
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	p, err := LoadPolicy(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadPolicy returned error: %v", err)
+	}
+	if p.FailOn != models.SeverityHigh {
+		t.Errorf("FailOn = %q, want %q", p.FailOn, models.SeverityHigh)
+	}
+	if p.CRA.RequiredScore != 75 {
+		t.Errorf("CRA.RequiredScore = %d, want 75", p.CRA.RequiredScore)
+	}
+	if p.SupplyChain.MinPinningScore != 80 {
+		t.Errorf("SupplyChain.MinPinningScore = %d, want 80", p.SupplyChain.MinPinningScore)
+	}
+	if p.Licences.Mode != "deny" {
+		t.Errorf("Licences.Mode = %q, want %q", p.Licences.Mode, "deny")
+	}
+}
+
+// contains is a helper to check if a string contains a substring.
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

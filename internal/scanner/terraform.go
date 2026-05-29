@@ -93,6 +93,7 @@ func (t *TerraformScanner) ParseDependencies(ctx context.Context, manifestPath s
 			Ecosystem: models.EcosystemTerraform,
 			Hash:      hash,
 			PkgURL:    purl,
+			Direct:    false,
 		})
 	}
 

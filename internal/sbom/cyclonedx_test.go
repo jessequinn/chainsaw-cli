@@ -125,6 +125,43 @@ func TestGenerateCycloneDX_ToolMetadata(t *testing.T) {
 	}
 }
 
+func TestGenerateCycloneDX_DirectVsTransitive(t *testing.T) {
+	components := []models.Component{
+		{Name: "express", Version: "4.18.0", Ecosystem: models.EcosystemNpm, PkgURL: "pkg:npm/express@4.18.0", Direct: true},
+		{Name: "lodash", Version: "4.17.21", Ecosystem: models.EcosystemNpm, PkgURL: "pkg:npm/lodash@4.17.21", Direct: false},
+	}
+
+	data, err := GenerateCycloneDX(components, "0.1.0")
+	if err != nil {
+		t.Fatalf("GenerateCycloneDX error: %v", err)
+	}
+
+	var bom cdxBOM
+	if err := json.Unmarshal(data, &bom); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if len(bom.Components) != 2 {
+		t.Fatalf("component count = %d, want 2", len(bom.Components))
+	}
+
+	// First component (express) is direct
+	if bom.Components[0].Name != "express" {
+		t.Errorf("component[0].name = %q, want %q", bom.Components[0].Name, "express")
+	}
+	if bom.Components[0].Scope != "required" {
+		t.Errorf("component[0].scope = %q, want %q", bom.Components[0].Scope, "required")
+	}
+
+	// Second component (lodash) is transitive
+	if bom.Components[1].Name != "lodash" {
+		t.Errorf("component[1].name = %q, want %q", bom.Components[1].Name, "lodash")
+	}
+	if bom.Components[1].Scope != "optional" {
+		t.Errorf("component[1].scope = %q, want %q", bom.Components[1].Scope, "optional")
+	}
+}
+
 func TestGenerateCycloneDX_MultiEcosystem(t *testing.T) {
 	components := []models.Component{
 		{Name: "golang.org/x/text", Version: "0.14.0", Ecosystem: models.EcosystemGo, PkgURL: "pkg:golang/golang.org/x/text@0.14.0"},

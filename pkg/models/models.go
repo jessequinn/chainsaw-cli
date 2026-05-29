@@ -151,6 +151,7 @@ type Component struct {
 	Licenses  []string  `json:"licenses,omitempty"`
 	PkgURL    string    `json:"purl"`
 	Location  string    `json:"location,omitempty"`
+	Direct    bool      `json:"direct,omitempty"`
 }
 
 type Finding struct {
@@ -169,6 +170,7 @@ type ScanResult struct {
 	Components  []Component `json:"components"`
 	Findings    []Finding   `json:"findings"`
 	Hygiene     []Finding   `json:"hygiene"`
+	Warnings    []string    `json:"warnings,omitempty"`
 	Timestamp   time.Time   `json:"timestamp"`
 	ToolVersion string      `json:"tool_version"`
 }

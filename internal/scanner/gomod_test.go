@@ -88,18 +88,21 @@ func TestGoScanner_ParseDependencies(t *testing.T) {
 		version string
 		purl    string
 		hasHash bool
+		direct  bool
 	}{
 		{
 			name:    "github.com/gin-gonic/gin",
 			version: "v1.9.1",
 			purl:    "pkg:golang/github.com/gin-gonic/gin@v1.9.1",
 			hasHash: true,
+			direct:  true,
 		},
 		{
 			name:    "golang.org/x/text",
 			version: "v0.14.0",
 			purl:    "pkg:golang/golang.org/x/text@v0.14.0",
 			hasHash: true,
+			direct:  true,
 		},
 	}
 
@@ -120,6 +123,9 @@ func TestGoScanner_ParseDependencies(t *testing.T) {
 			}
 			if tt.hasHash && c.Hash == "" {
 				t.Error("expected non-empty Hash from go.sum")
+			}
+			if c.Direct != tt.direct {
+				t.Errorf("Direct = %v, want %v", c.Direct, tt.direct)
 			}
 		})
 	}

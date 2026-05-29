@@ -17,6 +17,7 @@ type cdxComponent struct {
 	Name    string    `json:"name"`
 	Version string    `json:"version"`
 	Purl    string    `json:"purl,omitempty"`
+	Scope   string    `json:"scope,omitempty"`
 	Hashes  []cdxHash `json:"hashes,omitempty"`
 }
 
@@ -51,6 +52,12 @@ func GenerateCycloneDX(components []models.Component, toolVersion string) ([]byt
 			Name:    c.Name,
 			Version: c.Version,
 			Purl:    c.PkgURL,
+		}
+		// Set scope based on Direct field: required for direct, optional for transitive.
+		if c.Direct {
+			cc.Scope = "required"
+		} else {
+			cc.Scope = "optional"
 		}
 		if c.Hash != "" {
 			cc.Hashes = []cdxHash{

@@ -45,6 +45,7 @@ func (n *NpmScanner) DetectManifests(ctx context.Context, root string) ([]string
 type npmLockfile struct {
 	LockfileVersion int                    `json:"lockfileVersion"`
 	Packages        map[string]npmPackage  `json:"packages"`
+	Dependencies    map[string]interface{} `json:"dependencies,omitempty"`
 }
 
 type npmPackage struct {
@@ -55,6 +56,9 @@ type npmPackage struct {
 
 // ParseDependencies reads a package-lock.json (lockfileVersion 2 or 3) and
 // returns one Component per entry in the "packages" map.
+// TODO: Distinguish direct vs transitive dependencies by reading package.json
+// or analyzing the lockfile structure more carefully. For now, all npm
+// components are marked as transitive (Direct: false).
 func (n *NpmScanner) ParseDependencies(ctx context.Context, manifestPath string) ([]models.Component, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -87,6 +91,7 @@ func (n *NpmScanner) ParseDependencies(ctx context.Context, manifestPath string)
 			Ecosystem: models.EcosystemNpm,
 			Hash:      pkg.Integrity,
 			PkgURL:    npmPkgURL(name, pkg.Version),
+			Direct:    false,
 		}
 		components = append(components, c)
 	}

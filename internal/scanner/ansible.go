@@ -93,6 +93,7 @@ func (a *AnsibleScanner) ParseDependencies(ctx context.Context, manifestPath str
 				Version:   version,
 				Ecosystem: models.EcosystemAnsible,
 				PkgURL:    purl,
+				Direct:    false,
 			})
 		}
 	}

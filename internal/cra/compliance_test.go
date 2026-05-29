@@ -233,7 +233,7 @@ func TestAssess_WithCriticalVulnerabilities(t *testing.T) {
 }
 
 func TestAssess_CheckCount(t *testing.T) {
-	// 6 checkers: SBOM(5), Vuln(3), Disclosure(4), Update(3), Support(2), Reporting(3) = 20 total
+	// 8 checkers: Classification(2), SBOM(5), Vuln(3), Disclosure(4), Update(3), Support(2), Reporting(6), SecureDefaults(2) = 27 total
 	dir := setupProjectDir(t, true, true, "chainsaw")
 	actx := &AssessmentContext{
 		RootPath:   dir,
@@ -243,8 +243,8 @@ func TestAssess_CheckCount(t *testing.T) {
 
 	result := Assess(context.Background(), actx)
 
-	// With components present, SBOM produces 5, Vuln 3, Disclosure 4, Update 3, Support 2, Reporting 3 = 20.
-	expected := 20
+	// With components present, Classification produces 2, SBOM 5, Vuln 3, Disclosure 4, Update 3, Support 2, Reporting 7, SecureDefaults 2 = 28.
+	expected := 28
 	if len(result.Checks) != expected {
 		t.Errorf("check count = %d, want %d", len(result.Checks), expected)
 	}
