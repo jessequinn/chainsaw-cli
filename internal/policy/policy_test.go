@@ -167,6 +167,91 @@ func TestPolicy_Evaluate_DeniedLicence(t *testing.T) {
 	}
 }
 
+func TestPolicy_Evaluate_EcosystemOverride_stricter(t *testing.T) {
+	p := &Policy{
+		FailOn: models.SeverityCritical,
+		Ecosystems: map[string]EcosystemOverride{
+			"go": {FailOn: models.SeverityHigh},
+		},
+	}
+	result := models.ScanResult{
+		Findings: []models.Finding{{
+			ID:       "GHSA-TEST",
+			Severity: models.SeverityHigh,
+			Component: models.Component{
+				Name:      "pkg",
+				Version:   "1.0.0",
+				Ecosystem: models.EcosystemGo,
+			},
+		}},
+	}
+
+	violations, code := p.Evaluate(result)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (ecosystem override should trigger)", code)
+	}
+	if len(violations) != 1 {
+		t.Errorf("expected 1 violation, got %d", len(violations))
+	}
+}
+
+func TestPolicy_Evaluate_EcosystemOverride_lenient(t *testing.T) {
+	p := &Policy{
+		FailOn: models.SeverityMedium,
+		Ecosystems: map[string]EcosystemOverride{
+			"npm": {FailOn: models.SeverityCritical},
+		},
+	}
+	result := models.ScanResult{
+		Findings: []models.Finding{{
+			ID:       "GHSA-TEST",
+			Severity: models.SeverityHigh,
+			Component: models.Component{
+				Name:      "pkg",
+				Version:   "1.0.0",
+				Ecosystem: models.EcosystemNpm,
+			},
+		}},
+	}
+
+	violations, code := p.Evaluate(result)
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0 (ecosystem override should suppress)", code)
+	}
+	if len(violations) != 0 {
+		t.Errorf("expected 0 violations, got %d", len(violations))
+	}
+}
+
+func TestPolicy_Evaluate_EcosystemOverride_fallback(t *testing.T) {
+	p := &Policy{
+		FailOn: models.SeverityHigh,
+		Ecosystems: map[string]EcosystemOverride{
+			"go": {FailOn: models.SeverityCritical},
+		},
+	}
+	result := models.ScanResult{
+		Findings: []models.Finding{{
+			ID:       "GHSA-TEST",
+			Severity: models.SeverityHigh,
+			Component: models.Component{
+				Name:      "pkg",
+				Version:   "1.0.0",
+				Ecosystem: models.EcosystemPyPI,
+			},
+		}},
+	}
+
+	violations, code := p.Evaluate(result)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (should use global threshold)", code)
+	}
+	if len(violations) != 1 {
+		t.Errorf("expected 1 violation, got %d", len(violations))
+	}
+}
+
+
 func TestLoadPolicy_WithCRASection(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
@@ -426,6 +511,51 @@ licences:
 	}
 	if p.Licences.Mode != "deny" {
 		t.Errorf("Licences.Mode = %q, want %q", p.Licences.Mode, "deny")
+	}
+}
+
+func TestLoadPolicy_with_ecosystem_overrides(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".chainsaw.yaml")
+	content := `
+policy:
+  fail-on: high
+  ignore: []
+  ecosystems:
+    go:
+      fail-on: medium
+    npm:
+      fail-on: critical
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	p, err := LoadPolicy(context.Background(), path)
+	if err != nil {
+		t.Fatalf("LoadPolicy returned error: %v", err)
+	}
+	if p.FailOn != models.SeverityHigh {
+		t.Errorf("FailOn = %q, want %q", p.FailOn, models.SeverityHigh)
+	}
+	if len(p.Ecosystems) != 2 {
+		t.Errorf("Ecosystems count = %d, want 2", len(p.Ecosystems))
+	}
+
+	goOverride, ok := p.Ecosystems["go"]
+	if !ok {
+		t.Fatal("expected 'go' ecosystem override to be present")
+	}
+	if goOverride.FailOn != models.SeverityMedium {
+		t.Errorf("go override FailOn = %q, want %q", goOverride.FailOn, models.SeverityMedium)
+	}
+
+	npmOverride, ok := p.Ecosystems["npm"]
+	if !ok {
+		t.Fatal("expected 'npm' ecosystem override to be present")
+	}
+	if npmOverride.FailOn != models.SeverityCritical {
+		t.Errorf("npm override FailOn = %q, want %q", npmOverride.FailOn, models.SeverityCritical)
 	}
 }
 

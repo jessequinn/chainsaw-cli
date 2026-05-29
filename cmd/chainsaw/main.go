@@ -56,6 +56,8 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(initCRACmd())
 	root.AddCommand(diffCmd())
 	root.AddCommand(baselineCmd())
+	root.AddCommand(generateDeclarationCmd())
+	root.AddCommand(generateDocsCmd())
 
 	return root
 }
@@ -157,6 +159,163 @@ func baselineCmd() *cobra.Command {
 	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Limit to ecosystem (go, npm, python, etc.)")
 	cmd.Flags().BoolVar(&update, "update", false, "Update existing baseline (preserves created date)")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages")
+
+	return cmd
+}
+
+func generateDeclarationCmd() *cobra.Command {
+	var (
+		ecosystem   string
+		policyPath  string
+		outputPath  string
+		quiet       bool
+		product     string
+		version_    string
+		category    string
+		address     string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "generate-declaration [path]",
+		Short: "Generate EU Declaration of Conformity (CRA Article 28)",
+		Long:  "Generate a Markdown EU Declaration of Conformity per CRA Article 28, incorporating scan and compliance results.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			// Default output path if not specified
+			if outputPath == "" {
+				outputPath = "DECLARATION-OF-CONFORMITY.md"
+			}
+
+			// Determine product name
+			prod := product
+			if prod == "" {
+				prod = "Product"
+			}
+
+			// Determine version
+			ver := version_
+			if ver == "" {
+				ver = "1.0.0"
+			}
+
+			// Load policy to get CRA config
+			pol, err := engine.LoadPolicy(ctx, policyPath)
+			if err != nil {
+				return err
+			}
+
+			craConfig := &cra.CRAConfig{
+				ProductName:     product,
+				Manufacturer:    pol.CRA.Manufacturer,
+				SecurityContact: pol.CRA.SecurityContact,
+				SupportEndDate:  pol.CRA.SupportEndDate,
+				CSIRTContact:    pol.CRA.CSIRTContact,
+				ProductCategory: category,
+			}
+
+			// Detect and parse all dependencies
+			scanners := engine.ResolveScanners(ecosystem)
+			if len(scanners) == 0 {
+				return fmt.Errorf("no scanners registered for ecosystems: %s", ecosystem)
+			}
+
+			var components []models.Component
+			var warnings []string
+			for _, s := range scanners {
+				if !quiet {
+					fmt.Fprintf(os.Stderr, "Scanning %s...\n", s.Ecosystem())
+				}
+				manifests, err := s.DetectManifests(ctx, root)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("scanner %s: %v", s.Ecosystem(), err))
+					continue
+				}
+				for _, m := range manifests {
+					deps, err := s.ParseDependencies(ctx, m)
+					if err != nil {
+						warnings = append(warnings, fmt.Sprintf("parsing %s: %v", m, err))
+						continue
+					}
+					components = append(components, deps...)
+				}
+			}
+
+			// Vulnerability matching
+			if !quiet && len(components) > 0 {
+				fmt.Fprintf(os.Stderr, "Querying vulnerabilities for %d components...\n", len(components))
+			}
+			vulnClient := vuln.NewClient()
+			matcher := vuln.NewMatcher(vulnClient)
+			findings, err := matcher.Match(ctx, components)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("vulnerability matching: %v", err))
+			}
+
+			// Hygiene checks
+			var hygieneFindings []models.Finding
+			hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckActionSecurity(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckDockerfiles(root)...)
+
+			// Build assessment context and run CRA checks
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Assessing CRA compliance...\n")
+			}
+			assessCtx := cra.AssessmentContext{
+				RootPath:    root,
+				Components:  components,
+				Findings:    findings,
+				Hygiene:     hygieneFindings,
+				ToolVersion: version,
+				Config:      craConfig,
+			}
+			result := cra.Assess(ctx, &assessCtx)
+
+			// Create output file
+			f, err := os.Create(outputPath)
+			if err != nil {
+				return fmt.Errorf("creating output file: %w", err)
+			}
+			defer f.Close()
+
+			// Generate declaration
+			decCfg := cra.DeclarationConfig{
+				ProductName:    prod,
+				Manufacturer:   pol.CRA.Manufacturer,
+				ProductVersion: ver,
+				Category:       category,
+				Address:        address,
+				CRAResult:      result,
+			}
+
+			if err := cra.WriteDeclaration(f, decCfg); err != nil {
+				return fmt.Errorf("writing declaration: %w", err)
+			}
+
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "EU Declaration of Conformity generated: %s\n", outputPath)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Filter scanners by ecosystem (e.g., go, npm, python)")
+	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "DECLARATION-OF-CONFORMITY.md", "Output file path")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
+	cmd.Flags().StringVar(&product, "product", "", "Product name (required)")
+	cmd.Flags().StringVar(&version_, "version", "1.0.0", "Product version")
+	cmd.Flags().StringVar(&category, "category", "default", "Product category: critical, important-class-2, important-class-1, or default")
+	cmd.Flags().StringVar(&address, "address", "", "Manufacturer's registered address")
+	_ = cmd.MarkFlagRequired("product")
 
 	return cmd
 }
@@ -1312,6 +1471,166 @@ func initCRACmd() *cobra.Command {
 	cmd.Flags().StringVar(&supportEnd, "support-end-date", "", "Support end date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&csirt, "csirt-contact", "", "CSIRT notification contact")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing .chainsaw.yaml")
+
+	return cmd
+}
+
+func generateDocsCmd() *cobra.Command {
+	var (
+		ecosystem   string
+		policyPath  string
+		outputPath  string
+		quiet       bool
+		product     string
+		version_    string
+		category    string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "generate-docs [path]",
+		Short: "Generate CRA Article 10 technical documentation",
+		Long:  "Generate a Markdown skeleton for CRA Article 10(2) technical documentation, incorporating scan and compliance results.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			// Default output path if not specified
+			if outputPath == "" {
+				outputPath = "TECHNICAL-DOCUMENTATION.md"
+			}
+
+			// Determine product name
+			prod := product
+			if prod == "" {
+				prod = "Product"
+			}
+
+			// Load policy
+			pol, err := engine.LoadPolicy(ctx, policyPath)
+			if err != nil {
+				return err
+			}
+
+			// Resolve scanners, optionally filtered by ecosystem
+			scanners := engine.ResolveScanners(ecosystem)
+			if len(scanners) == 0 {
+				return fmt.Errorf("no scanners registered for ecosystems: %s", ecosystem)
+			}
+
+			// Run scan pipeline to gather component data
+			var components []models.Component
+			var warnings []string
+			for _, s := range scanners {
+				if !quiet {
+					fmt.Fprintf(os.Stderr, "Scanning %s...\n", s.Ecosystem())
+				}
+				manifests, err := s.DetectManifests(ctx, root)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("scanner %s: %v", s.Ecosystem(), err))
+					continue
+				}
+				for _, m := range manifests {
+					deps, err := s.ParseDependencies(ctx, m)
+					if err != nil {
+						warnings = append(warnings, fmt.Sprintf("parsing %s: %v", m, err))
+						continue
+					}
+					components = append(components, deps...)
+				}
+			}
+
+			// Vulnerability matching
+			if !quiet && len(components) > 0 {
+				fmt.Fprintf(os.Stderr, "Querying vulnerabilities for %d components...\n", len(components))
+			}
+			client := vuln.NewClient()
+			matcher := vuln.NewMatcher(client)
+			findings, err := matcher.Match(ctx, components)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("vulnerability matching: %v", err))
+			}
+
+			// Hygiene checks
+			var hygieneFindings []models.Finding
+			hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckActionSecurity(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckDockerfiles(root)...)
+
+			// Build CRA assessment
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Assessing CRA compliance...\n")
+			}
+			craConfig := &cra.CRAConfig{
+				ProductName:     pol.CRA.Manufacturer,
+				Manufacturer:    pol.CRA.Manufacturer,
+				SecurityContact: pol.CRA.SecurityContact,
+				SupportEndDate:  pol.CRA.SupportEndDate,
+				CSIRTContact:    pol.CRA.CSIRTContact,
+			}
+			assessCtx := cra.AssessmentContext{
+				RootPath:    root,
+				Components:  components,
+				Findings:    findings,
+				Hygiene:     hygieneFindings,
+				ToolVersion: version,
+				Config:      craConfig,
+			}
+			craResult := cra.Assess(ctx, &assessCtx)
+
+			// Determine product version
+			vers := version_
+			if vers == "" {
+				vers = version
+			}
+
+			// Determine category
+			cat := category
+			if cat == "" {
+				cat = "default"
+			}
+
+			// Generate technical documentation
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Generating technical documentation...\n")
+			}
+
+			docCfg := cra.TechDocConfig{
+				ProductName:    prod,
+				Manufacturer:   pol.CRA.Manufacturer,
+				ProductVersion: vers,
+				Category:       cat,
+				SupportEndDate: pol.CRA.SupportEndDate,
+				Components:     components,
+				CRAResult:      craResult,
+			}
+
+			out, err := os.Create(outputPath)
+			if err != nil {
+				return fmt.Errorf("creating output file: %w", err)
+			}
+			defer out.Close()
+
+			if err := cra.WriteTechDoc(out, docCfg); err != nil {
+				return fmt.Errorf("writing technical documentation: %w", err)
+			}
+
+			fmt.Fprintf(os.Stderr, "Technical documentation written to: %s\n", outputPath)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Comma-separated ecosystems to scan (e.g. go,npm)")
+	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file (default: TECHNICAL-DOCUMENTATION.md)")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
+	cmd.Flags().StringVar(&product, "product", "", "Product name (default: Product)")
+	cmd.Flags().StringVar(&version_, "version", "", "Product version (default: tool version)")
+	cmd.Flags().StringVar(&category, "category", "", "CRA category: default, important-class-1, important-class-2, critical (default: default)")
 
 	return cmd
 }

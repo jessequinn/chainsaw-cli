@@ -1,11 +1,8 @@
 package policy
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -66,10 +63,16 @@ type LicencePolicy struct {
 	PerEcosystem map[string][]string `yaml:"per-ecosystem"`
 }
 
+// EcosystemOverride allows per-ecosystem policy thresholds.
+type EcosystemOverride struct {
+	FailOn models.Severity `yaml:"fail-on"`
+}
+
 // Policy defines the rules for evaluating scan results.
 type Policy struct {
-	FailOn models.Severity `yaml:"fail-on"`
-	Ignore []IgnoreRule    `yaml:"ignore"`
+	FailOn      models.Severity              `yaml:"fail-on"`
+	Ignore      []IgnoreRule                 `yaml:"ignore"`
+	Ecosystems  map[string]EcosystemOverride `yaml:"ecosystems"`
 
 	// v2 fields
 	CRA         CRAPolicy         `yaml:"cra"`
@@ -79,8 +82,9 @@ type Policy struct {
 
 // policyFile matches the on-disk YAML structure where `fail-on` and `ignore`
 // are nested under a `policy:` key while `cra:`, `supply-chain:`, and
-// `licences:` are top-level siblings.
+// `licences:` are top-level siblings. `extends:` allows inheriting from a parent policy.
 type policyFile struct {
+	Extends     string            `yaml:"extends"`
 	Policy      policyCore        `yaml:"policy"`
 	CRA         CRAPolicy         `yaml:"cra"`
 	SupplyChain SupplyChainPolicy `yaml:"supply-chain"`
@@ -88,56 +92,15 @@ type policyFile struct {
 }
 
 type policyCore struct {
-	FailOn   models.Severity `yaml:"fail-on"`
-	Ignore   []IgnoreRule    `yaml:"ignore"`
-	Licences LicencePolicy   `yaml:"licences"`
+	FailOn     models.Severity              `yaml:"fail-on"`
+	Ignore     []IgnoreRule                 `yaml:"ignore"`
+	Ecosystems map[string]EcosystemOverride `yaml:"ecosystems"`
+	Licences   LicencePolicy                `yaml:"licences"`
 }
 
-// LoadPolicy reads and parses a .chainsaw.yaml policy file.
-func LoadPolicy(_ context.Context, path string) (*Policy, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading policy file: %w", err)
-	}
-
-	var pf policyFile
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&pf); err != nil {
-		return nil, fmt.Errorf("parsing policy file: %w", err)
-	}
-
-	// Validate raw fail-on value before normalization.
-	// ParseSeverity silently maps unknown values to NONE, so we must
-	// reject typos like "HIHG" here rather than letting them become NONE.
-	if raw := pf.Policy.FailOn; raw != "" {
-		normalised := models.ParseSeverity(string(raw))
-		if normalised == models.SeverityNone && strings.ToUpper(string(raw)) != string(models.SeverityNone) {
-			return nil, fmt.Errorf("invalid policy: invalid fail_on severity %q: must be CRITICAL, HIGH, MEDIUM, or LOW", raw)
-		}
-	}
-
-	// Merge the nested and top-level fields into a single Policy.
-	p := &Policy{
-		FailOn:      models.ParseSeverity(string(pf.Policy.FailOn)),
-		Ignore:      pf.Policy.Ignore,
-		CRA:         pf.CRA,
-		SupplyChain: pf.SupplyChain,
-	}
-
-	// Licences can appear either under policy: or at the top level.
-	// Top-level takes precedence if both are set.
-	if len(pf.Licences.DenyList) > 0 || len(pf.Licences.AllowList) > 0 || pf.Licences.Mode != "" {
-		p.Licences = pf.Licences
-	} else {
-		p.Licences = pf.Policy.Licences
-	}
-
-	if err := p.validate(); err != nil {
-		return nil, fmt.Errorf("invalid policy: %w", err)
-	}
-
-	return p, nil
+// LoadPolicy reads and parses a .chainsaw.yaml policy file, resolving inheritance via extends.
+func LoadPolicy(ctx context.Context, path string) (*Policy, error) {
+	return loadPolicyWithInheritance(ctx, path, 0)
 }
 
 // validate checks that the policy fields have valid values.
@@ -152,6 +115,21 @@ func (p *Policy) validate() error {
 		}
 		if !valid[p.FailOn] {
 			return fmt.Errorf("invalid fail_on severity %q: must be CRITICAL, HIGH, MEDIUM, or LOW", p.FailOn)
+		}
+	}
+
+	// Validate ecosystem overrides.
+	for key, override := range p.Ecosystems {
+		if override.FailOn != "" && override.FailOn != models.SeverityNone {
+			valid := map[models.Severity]bool{
+				models.SeverityCritical: true,
+				models.SeverityHigh:     true,
+				models.SeverityMedium:   true,
+				models.SeverityLow:      true,
+			}
+			if !valid[override.FailOn] {
+				return fmt.Errorf("invalid ecosystem %q fail_on severity %q: must be CRITICAL, HIGH, MEDIUM, or LOW", key, override.FailOn)
+			}
 		}
 	}
 
@@ -236,7 +214,11 @@ func (p *Policy) Evaluate(result models.ScanResult) ([]models.Finding, int) {
 		if ignored[f.ID] {
 			continue
 		}
-		if models.SeverityRank(f.Severity) >= failThreshold && failThreshold > 0 {
+		threshold := failThreshold
+		if override, ok := p.Ecosystems[string(f.Component.Ecosystem)]; ok {
+			threshold = models.SeverityRank(override.FailOn)
+		}
+		if threshold > 0 && models.SeverityRank(f.Severity) >= threshold {
 			violations = append(violations, f)
 		}
 	}
