@@ -6,6 +6,17 @@ The format is based on [Common Changelog](https://common-changelog.org/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-05-29
+
+### Changed
+
+Upgrade GitHub Actions to Node.js 24-compatible versions:
+`actions/checkout` v4 to v6, `actions/setup-go` v5 to v6,
+`actions/upload-artifact` v4 to v7, `codeql-action/upload-sarif`
+v3 to v4
+
+Update `init-ci` scaffold template with the same action versions
+
 ## [0.3.2] - 2026-05-28
 
 ### Fixed
