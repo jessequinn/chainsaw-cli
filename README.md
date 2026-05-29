@@ -82,6 +82,14 @@ chainsaw supply-chain .                      # multi-layer analysis
 chainsaw supply-chain --format json .        # machine-readable output
 ```
 
+### Run unified compliance check
+
+```sh
+chainsaw check .                             # scan + comply + supply-chain in one
+chainsaw check --format json .               # machine-readable combined output
+chainsaw check --output results.json .       # write to file
+```
+
 ### Generate SBOM
 
 ```sh
@@ -100,7 +108,7 @@ chainsaw diff --base main.json --head pr.json --fail-on high     # CI gate
 ### Scaffold security files
 
 ```sh
-chainsaw init-security .                             # SECURITY.md + security.txt + .chainsaw.yaml
+chainsaw init-security .                             # SECURITY.md + security.txt + INCIDENT-RESPONSE.md + .chainsaw.yaml
 chainsaw init-security --org "My Company" --email security@example.com .
 ```
 
@@ -110,6 +118,16 @@ chainsaw init-security --org "My Company" --email security@example.com .
 chainsaw init-ci .                                   # .github/workflows/chainsaw.yml
 chainsaw init-ci --fail-on critical --go-version 1.22 .
 ```
+
+### Common flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--format` | `-f` | Output format: table, json, sarif |
+| `--output` | `-o` | Write output to file instead of stdout |
+| `--quiet` | `-q` | Suppress progress messages |
+| `--policy` | | Path to policy file (default: .chainsaw.yaml) |
+| `--fail-on` | | Minimum severity to trigger exit code 1 |
 
 ## Supported Ecosystems
 
@@ -137,11 +155,21 @@ chainsaw init-ci --fail-on critical --go-version 1.22 .
 | Check | CRA Reference | What It Verifies |
 |-------|---------------|-----------------|
 | SBOM completeness | Annex I, Part 2(1) | Top-level deps, versions, purls, hashes |
+| Transitive SBOM | Annex I, Part 2(1) | Direct vs transitive dep classification |
 | Known vulnerabilities | Annex I, Part 1(2)(a) | No known exploitable vulns |
 | Disclosure process | Annex I, Part 2(5) | SECURITY.md, security.txt, contact info |
 | Update mechanism | Annex I, Part 2(7) | Releases, changelog, semver tags |
 | Support period | Annex II(7) | End-date documented |
-| Reporting readiness | Article 14 | CI scanning, CSIRT contact, 24h process |
+| Reporting readiness | Article 14 | CSIRT contact, 24h early warning process |
+| Product classification | Article 32 | Annex III/IV category, conformity assessment |
+| Secure defaults | Annex I, Part 1(3) | Dockerfile USER, GH Actions permissions |
+| Deadline countdown | Article 14 | Days remaining, urgency level |
+
+### Track compliance over time
+
+```sh
+chainsaw comply --trend .                    # show CRA score progression
+```
 
 ## Output Formats
 
@@ -160,8 +188,8 @@ policy:
   fail-on: high
   ignore:
     - CVE-2024-1234
-  licenses:
-    deny:
+  licences:
+    deny-list:
       - GPL-3.0-only
       - AGPL-3.0-only
 
@@ -171,6 +199,11 @@ cra:
   manufacturer: "My Company GmbH"
   support-end-date: "2031-12-31"
   security-contact: "security@mycompany.eu"
+  csirt-contact: "https://www.enisa.europa.eu/csirt-inventory"
+  product-category: "default"
+
+supply-chain:
+  min-pinning-score: 70
 ```
 
 Enable licence detection with `--detect-licences` on the `scan` command:
