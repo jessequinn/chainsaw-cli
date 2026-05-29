@@ -58,15 +58,24 @@ goes further:
 
 ## Install
 
+### Homebrew (macOS and Linux)
+
+```
+brew tap jessequinn/chainsaw
+brew install --cask chainsaw
+```
+
+### Go install
+
 ```
 go install github.com/chainsaw-dev/chainsaw/cmd/chainsaw@latest
 ```
 
-Or build from source:
+### Build from source
 
 ```
-git clone https://github.com/chainsaw-dev/chainsaw.git
-cd chainsaw
+git clone https://github.com/jessequinn/chainsaw-cli.git
+cd chainsaw-cli
 make build
 ```
 

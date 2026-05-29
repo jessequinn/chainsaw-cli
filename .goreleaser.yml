@@ -61,9 +61,6 @@ homebrew_casks:
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/chainsaw"]
           end
-    custom_block: |
-      head "https://github.com/jessequinn/chainsaw-cli.git", branch: "main"
-
 changelog:
   disable: true
 
