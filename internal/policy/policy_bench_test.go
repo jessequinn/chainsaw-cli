@@ -53,9 +53,9 @@ func BenchmarkEvaluatePolicy(b *testing.B) {
 	// Create a policy with various rules
 	policy := &Policy{
 		FailOn: models.SeverityHigh,
-		Ignore: []string{
-			"CVE-2024-0001",
-			"GHSA-1234-5678-9012",
+		Ignore: []IgnoreRule{
+			{ID: "CVE-2024-0001"},
+			{ID: "GHSA-1234-5678-9012"},
 		},
 		Licences: LicencePolicy{
 			Mode: "deny",

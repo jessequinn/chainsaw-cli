@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
 )
@@ -33,8 +36,8 @@ policy:
 	if p.FailOn != models.SeverityHigh {
 		t.Errorf("FailOn = %q, want %q", p.FailOn, models.SeverityHigh)
 	}
-	if len(p.Ignore) != 1 || p.Ignore[0] != "CVE-2024-0001" {
-		t.Errorf("Ignore = %v, want [CVE-2024-0001]", p.Ignore)
+	if len(p.Ignore) != 1 || p.Ignore[0].ID != "CVE-2024-0001" {
+		t.Errorf("Ignore = %v, want [IgnoreRule{ID: CVE-2024-0001}]", p.Ignore)
 	}
 	if len(p.Licences.DenyList) != 1 || p.Licences.DenyList[0] != "GPL-3.0" {
 		t.Errorf("Licences.DenyList = %v, want [GPL-3.0]", p.Licences.DenyList)
@@ -116,7 +119,7 @@ func TestPolicy_Evaluate_FailOnSeverity(t *testing.T) {
 func TestPolicy_Evaluate_IgnoredCVE(t *testing.T) {
 	p := &Policy{
 		FailOn: models.SeverityLow,
-		Ignore: []string{"GHSA-IGNORE"},
+		Ignore: []IgnoreRule{{ID: "GHSA-IGNORE"}},
 	}
 	result := models.ScanResult{
 		Findings: []models.Finding{{
@@ -423,6 +426,160 @@ licences:
 	}
 	if p.Licences.Mode != "deny" {
 		t.Errorf("Licences.Mode = %q, want %q", p.Licences.Mode, "deny")
+	}
+}
+
+// IgnoreRule tests
+
+func TestIgnoreRule_IsExpired_no_date(t *testing.T) {
+	rule := IgnoreRule{ID: "CVE-2024-0001"}
+	now := time.Now()
+	if rule.IsExpired(now) {
+		t.Error("rule with no expires date should not be expired")
+	}
+}
+
+func TestIgnoreRule_IsExpired_future(t *testing.T) {
+	rule := IgnoreRule{
+		ID:      "CVE-2024-0001",
+		Expires: "2099-01-01",
+	}
+	now := time.Now()
+	if rule.IsExpired(now) {
+		t.Error("rule with future expires date should not be expired")
+	}
+}
+
+func TestIgnoreRule_IsExpired_past(t *testing.T) {
+	rule := IgnoreRule{
+		ID:      "CVE-2024-0001",
+		Expires: "2020-01-01",
+	}
+	now := time.Now()
+	if !rule.IsExpired(now) {
+		t.Error("rule with past expires date should be expired")
+	}
+}
+
+func TestIgnoreRule_IsExpired_invalid_format(t *testing.T) {
+	rule := IgnoreRule{
+		ID:      "CVE-2024-0001",
+		Expires: "not-a-date",
+	}
+	now := time.Now()
+	if !rule.IsExpired(now) {
+		t.Error("rule with invalid expires format should be treated as expired")
+	}
+}
+
+func TestPolicy_Evaluate_ExpiredIgnore_surfaces_finding(t *testing.T) {
+	p := &Policy{
+		FailOn: models.SeverityLow,
+		Ignore: []IgnoreRule{{
+			ID:      "GHSA-EXPIRED",
+			Expires: "2020-01-01",
+		}},
+	}
+	result := models.ScanResult{
+		Findings: []models.Finding{{
+			ID:       "GHSA-EXPIRED",
+			Severity: models.SeverityHigh,
+			Component: models.Component{
+				Name:    "pkg",
+				Version: "1.0.0",
+			},
+		}},
+	}
+
+	violations, code := p.Evaluate(result)
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (expired ignore should not suppress)", code)
+	}
+	if len(violations) != 1 {
+		t.Errorf("expected 1 violation (ignore expired), got %d", len(violations))
+	}
+}
+
+func TestIgnoreRule_UnmarshalYAML_string(t *testing.T) {
+	yamlContent := `
+policy:
+  ignore:
+    - CVE-2024-0001
+`
+	var pf policyFile
+	if err := yaml.Unmarshal([]byte(yamlContent), &pf); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(pf.Policy.Ignore) != 1 {
+		t.Errorf("expected 1 ignore rule, got %d", len(pf.Policy.Ignore))
+	}
+	if pf.Policy.Ignore[0].ID != "CVE-2024-0001" {
+		t.Errorf("ignore rule ID = %q, want %q", pf.Policy.Ignore[0].ID, "CVE-2024-0001")
+	}
+	if pf.Policy.Ignore[0].Expires != "" {
+		t.Errorf("ignore rule Expires = %q, want empty", pf.Policy.Ignore[0].Expires)
+	}
+}
+
+func TestIgnoreRule_UnmarshalYAML_object(t *testing.T) {
+	yamlContent := `
+policy:
+  ignore:
+    - id: CVE-2024-0001
+      expires: "2026-12-31"
+      reason: "Accepted risk - no exploitable path"
+`
+	var pf policyFile
+	if err := yaml.Unmarshal([]byte(yamlContent), &pf); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(pf.Policy.Ignore) != 1 {
+		t.Errorf("expected 1 ignore rule, got %d", len(pf.Policy.Ignore))
+	}
+	rule := pf.Policy.Ignore[0]
+	if rule.ID != "CVE-2024-0001" {
+		t.Errorf("ignore rule ID = %q, want %q", rule.ID, "CVE-2024-0001")
+	}
+	if rule.Expires != "2026-12-31" {
+		t.Errorf("ignore rule Expires = %q, want %q", rule.Expires, "2026-12-31")
+	}
+	if rule.Reason != "Accepted risk - no exploitable path" {
+		t.Errorf("ignore rule Reason = %q, want %q", rule.Reason, "Accepted risk - no exploitable path")
+	}
+}
+
+func TestIgnoreRule_UnmarshalYAML_mixed(t *testing.T) {
+	yamlContent := `
+policy:
+  ignore:
+    - CVE-2024-0001
+    - id: CVE-2024-0002
+      expires: "2026-12-31"
+      reason: "Accepted risk"
+`
+	var pf policyFile
+	if err := yaml.Unmarshal([]byte(yamlContent), &pf); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(pf.Policy.Ignore) != 2 {
+		t.Errorf("expected 2 ignore rules, got %d", len(pf.Policy.Ignore))
+	}
+	// First should be bare string form
+	if pf.Policy.Ignore[0].ID != "CVE-2024-0001" {
+		t.Errorf("first rule ID = %q, want %q", pf.Policy.Ignore[0].ID, "CVE-2024-0001")
+	}
+	if pf.Policy.Ignore[0].Expires != "" || pf.Policy.Ignore[0].Reason != "" {
+		t.Error("first rule should have empty Expires and Reason")
+	}
+	// Second should be object form
+	if pf.Policy.Ignore[1].ID != "CVE-2024-0002" {
+		t.Errorf("second rule ID = %q, want %q", pf.Policy.Ignore[1].ID, "CVE-2024-0002")
+	}
+	if pf.Policy.Ignore[1].Expires != "2026-12-31" {
+		t.Errorf("second rule Expires = %q, want %q", pf.Policy.Ignore[1].Expires, "2026-12-31")
+	}
+	if pf.Policy.Ignore[1].Reason != "Accepted risk" {
+		t.Errorf("second rule Reason = %q, want %q", pf.Policy.Ignore[1].Reason, "Accepted risk")
 	}
 }
 

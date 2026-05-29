@@ -124,11 +124,14 @@ func TestWriteComplianceReport_DeadlineCountdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "Next deadline: 2026-09-11") {
-		t.Error("output missing deadline date")
+	if !strings.Contains(out, "CRA Compliance Timeline") {
+		t.Error("output missing CRA Compliance Timeline header")
 	}
-	if !strings.Contains(out, "Days remaining:") {
-		t.Error("output missing days remaining countdown")
+	if !strings.Contains(out, "2026-09-11") {
+		t.Error("output missing deadline date 2026-09-11")
+	}
+	if !strings.Contains(out, "days remaining") {
+		t.Error("output missing days remaining text")
 	}
 }
 
@@ -145,8 +148,9 @@ func TestWriteComplianceReport_DeadlineCountdown_NoDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	if strings.Contains(out, "Days remaining:") {
-		t.Error("output should not have days remaining when no deadline")
+	// CRA timeline is always shown now, regardless of NextDeadline field
+	if !strings.Contains(out, "CRA Compliance Timeline") {
+		t.Error("output should have CRA Compliance Timeline")
 	}
 }
 

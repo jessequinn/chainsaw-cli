@@ -75,22 +75,11 @@ func WriteComplianceReport(_ context.Context, w io.Writer, result models.CRAResu
 		fmt.Fprintln(w, "")
 	}
 
-	if result.NextDeadline != "" {
-		fmt.Fprintf(w, "Next deadline: %s -- %s\n", result.NextDeadline, result.NextDeadDesc)
-
-		// Calculate and display countdown.
-		deadline, err := time.Parse("2006-01-02", result.NextDeadline)
-		if err == nil {
-			days := int(time.Until(deadline).Hours() / 24)
-			urgency := "green"
-			if days < 30 {
-				urgency = "RED"
-			} else if days < 90 {
-				urgency = "YELLOW"
-			}
-			fmt.Fprintf(w, "Days remaining: %d [%s]\n", days, urgency)
-		}
-	}
+	// Display CRA compliance deadline timeline.
+	now := time.Now().UTC()
+	deadlineTable := FormatDeadlineTable("default", now)
+	fmt.Fprint(w, deadlineTable)
+	fmt.Fprintln(w, "")
 
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Disclaimer: This is a technical assessment aid, not legal advice or certification.")

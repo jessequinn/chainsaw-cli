@@ -4,9 +4,12 @@ policy:
   fail-on: high
 
   # CVE/GHSA IDs to ignore (accepted risk)
+  # Supports both bare strings and time-bounded rules:
   ignore: []
     # - CVE-2024-1234
-    # - GHSA-xxxx-yyyy
+    # - id: CVE-2024-5678
+    #   expires: "2026-12-31"
+    #   reason: "Accepted risk - no exploitable path in our usage"
 
   # Licence policy
   licences:

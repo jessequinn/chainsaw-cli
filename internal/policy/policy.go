@@ -6,11 +6,42 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
 )
+
+// IgnoreRule defines a time-bounded CVE ignore entry.
+type IgnoreRule struct {
+	ID      string `yaml:"id" json:"id"`
+	Expires string `yaml:"expires,omitempty" json:"expires,omitempty"` // YYYY-MM-DD
+	Reason  string `yaml:"reason,omitempty" json:"reason,omitempty"`
+}
+
+// IsExpired returns true if the rule has a set expiry date that is in the past.
+func (r IgnoreRule) IsExpired(now time.Time) bool {
+	if r.Expires == "" {
+		return false
+	}
+	t, err := time.Parse("2006-01-02", r.Expires)
+	if err != nil {
+		return true // treat unparseable dates as expired
+	}
+	return now.After(t)
+}
+
+// UnmarshalYAML supports both bare string ("CVE-...") and object forms.
+func (r *IgnoreRule) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		r.ID = value.Value
+		return nil
+	}
+	// Object form
+	type plain IgnoreRule
+	return value.Decode((*plain)(r))
+}
 
 // CRAPolicy defines CRA compliance thresholds.
 type CRAPolicy struct {
@@ -37,8 +68,8 @@ type LicencePolicy struct {
 
 // Policy defines the rules for evaluating scan results.
 type Policy struct {
-	FailOn   models.Severity `yaml:"fail-on"`
-	Ignore   []string        `yaml:"ignore"`
+	FailOn models.Severity `yaml:"fail-on"`
+	Ignore []IgnoreRule    `yaml:"ignore"`
 
 	// v2 fields
 	CRA         CRAPolicy         `yaml:"cra"`
@@ -58,7 +89,7 @@ type policyFile struct {
 
 type policyCore struct {
 	FailOn   models.Severity `yaml:"fail-on"`
-	Ignore   []string        `yaml:"ignore"`
+	Ignore   []IgnoreRule    `yaml:"ignore"`
 	Licences LicencePolicy   `yaml:"licences"`
 }
 
@@ -177,10 +208,19 @@ func (p *Policy) EvaluateSupplyChain(result models.SupplyChainResult) (bool, str
 // Evaluate checks a scan result against the policy, returning any violations
 // and an appropriate exit code (0 = clean, 1 = violations found).
 func (p *Policy) Evaluate(result models.ScanResult) ([]models.Finding, int) {
+	now := time.Now()
 	ignored := make(map[string]bool, len(p.Ignore))
-	for _, id := range p.Ignore {
-		ignored[id] = true
+	var warnings []string
+	for _, rule := range p.Ignore {
+		if rule.IsExpired(now) {
+			continue // expired ignores are no longer active
+		}
+		if rule.Reason == "" {
+			warnings = append(warnings, fmt.Sprintf("ignore rule for %s has no reason", rule.ID))
+		}
+		ignored[rule.ID] = true
 	}
+	_ = warnings // warnings logged in future (structured logging not yet wired)
 
 	denied := make(map[string]bool, len(p.Licences.DenyList))
 	for _, lic := range p.Licences.DenyList {

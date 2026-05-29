@@ -13,6 +13,7 @@ import (
 	"github.com/chainsaw-dev/chainsaw/internal/cra"
 	"github.com/chainsaw-dev/chainsaw/internal/diff"
 	"github.com/chainsaw-dev/chainsaw/internal/engine"
+	"github.com/chainsaw-dev/chainsaw/internal/evidence"
 	"github.com/chainsaw-dev/chainsaw/internal/hygiene"
 	"github.com/chainsaw-dev/chainsaw/internal/licence"
 	"github.com/chainsaw-dev/chainsaw/internal/initcmd"
@@ -48,6 +49,7 @@ func rootCmd() *cobra.Command {
 	root.AddCommand(complyCmd())
 	root.AddCommand(supplyChainCmd())
 	root.AddCommand(checkCmd())
+	root.AddCommand(evidenceCmd())
 	root.AddCommand(initSecurityCmd())
 	root.AddCommand(initCICmd())
 	root.AddCommand(diffCmd())
@@ -809,11 +811,15 @@ func checkCmd() *cobra.Command {
 			scPass, _ := pol.EvaluateSupplyChain(scResult)
 
 			// Output.
+			var writeErr error
 			switch format {
 			case "json":
-				return writeCheckJSON(ctx, w, scanResult, craResult, scResult)
+				writeErr = writeCheckJSON(ctx, w, scanResult, craResult, scResult)
 			default:
-				return writeCheckTable(ctx, w, scanResult, craResult, scResult)
+				writeErr = writeCheckTable(ctx, w, scanResult, craResult, scResult)
+			}
+			if writeErr != nil {
+				return writeErr
 			}
 
 			// Exit code: 0 if all pass, 1 if any fail.
@@ -830,6 +836,185 @@ func checkCmd() *cobra.Command {
 	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write output to file instead of stdout")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
+
+	return cmd
+}
+
+func evidenceCmd() *cobra.Command {
+	var (
+		policyPath  string
+		ecosystem   string
+		outputPath  string
+		quiet       bool
+		productName string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "evidence [path]",
+		Short: "Generate CRA evidence export bundle",
+		Long:  "Run scan, comply, and supply-chain checks, then bundle all results into a ZIP archive with manifest.",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			root := "."
+			if len(args) > 0 {
+				root = args[0]
+			}
+
+			// Default output path if not specified
+			if outputPath == "" {
+				outputPath = time.Now().Format("evidence-2006-01-02-150405.zip")
+			}
+
+			// Determine product name
+			prod := productName
+			if prod == "" {
+				prod = "Product"
+			}
+
+			// Load policy
+			pol, err := engine.LoadPolicy(ctx, policyPath)
+			if err != nil {
+				return err
+			}
+
+			// Resolve scanners
+			scanners := engine.ResolveScanners(ecosystem)
+			if len(scanners) == 0 {
+				return fmt.Errorf("no scanners registered for ecosystems: %s", ecosystem)
+			}
+
+			// Run full scan pipeline (reuse from checkCmd)
+			var components []models.Component
+			var warnings []string
+			for _, s := range scanners {
+				if !quiet {
+					fmt.Fprintf(os.Stderr, "Scanning %s...\n", s.Ecosystem())
+				}
+				manifests, err := s.DetectManifests(ctx, root)
+				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("scanner %s: %v", s.Ecosystem(), err))
+					continue
+				}
+				for _, m := range manifests {
+					deps, err := s.ParseDependencies(ctx, m)
+					if err != nil {
+						warnings = append(warnings, fmt.Sprintf("parsing %s: %v", m, err))
+						continue
+					}
+					components = append(components, deps...)
+				}
+			}
+
+			// Vulnerability matching
+			if !quiet && len(components) > 0 {
+				fmt.Fprintf(os.Stderr, "Querying vulnerabilities for %d components...\n", len(components))
+			}
+			client := vuln.NewClient()
+			matcher := vuln.NewMatcher(client)
+			findings, err := matcher.Match(ctx, components)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("vulnerability matching: %v", err))
+			}
+
+			// Hygiene checks
+			var hygieneFindings []models.Finding
+			hygieneFindings = append(hygieneFindings, hygiene.CheckTyposquatting(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckIntegrity(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckActionSecurity(components)...)
+			hygieneFindings = append(hygieneFindings, hygiene.CheckDockerfiles(root)...)
+
+			// Build scan result
+			scanResult := models.ScanResult{
+				Components:  components,
+				Findings:    findings,
+				Hygiene:     hygieneFindings,
+				Warnings:    warnings,
+				Timestamp:   time.Now(),
+				ToolVersion: version,
+			}
+
+			// CRA assessment
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Assessing CRA compliance...\n")
+			}
+			craConfig := &cra.CRAConfig{
+				ProductName:     pol.CRA.Manufacturer,
+				Manufacturer:    pol.CRA.Manufacturer,
+				SecurityContact: pol.CRA.SecurityContact,
+				SupportEndDate:  pol.CRA.SupportEndDate,
+				CSIRTContact:    pol.CRA.CSIRTContact,
+			}
+			assessCtx := cra.AssessmentContext{
+				RootPath:    root,
+				Components:  components,
+				Findings:    findings,
+				Hygiene:     hygieneFindings,
+				ToolVersion: version,
+				Config:      craConfig,
+			}
+			craResult := cra.Assess(ctx, &assessCtx)
+
+			// Supply chain analysis
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Analysing supply chain...\n")
+			}
+			var enriched []models.InfraComponent
+			for _, c := range components {
+				enriched = append(enriched, analysis.EnrichComponent(c))
+			}
+			pinningScore := analysis.CalculatePinningScore(enriched)
+			blastRadii := analysis.AssessAll(enriched)
+			scResult := models.SupplyChainResult{
+				Components:   enriched,
+				PinningScore: pinningScore,
+				BlastRadii:   blastRadii,
+				Timestamp:    time.Now(),
+				ToolVersion:  version,
+			}
+
+			// Generate SBOM
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Generating SBOM...\n")
+			}
+			sbomData, err := sbom.GenerateCycloneDX(components, version)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: SBOM generation failed: %v\n", err)
+				sbomData = nil
+			}
+
+			// Generate evidence bundle
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "Writing evidence bundle...\n")
+			}
+			out, err := os.Create(outputPath)
+			if err != nil {
+				return fmt.Errorf("creating output file: %w", err)
+			}
+			defer out.Close()
+
+			cfg := evidence.BundleConfig{
+				ProductName: prod,
+				ToolVersion: version,
+				ScanResult:  scanResult,
+				CRAResult:   craResult,
+				SupplyChain: scResult,
+				SBOMData:    sbomData,
+			}
+			if err := evidence.GenerateBundle(ctx, out, cfg); err != nil {
+				return fmt.Errorf("generating evidence bundle: %w", err)
+			}
+
+			fmt.Fprintf(os.Stderr, "Evidence bundle written to: %s\n", outputPath)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&policyPath, "policy", "", "Path to .chainsaw.yaml policy file")
+	cmd.Flags().StringVar(&ecosystem, "ecosystem", "", "Comma-separated ecosystems to scan (e.g. go,npm)")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Write evidence bundle to file (default: evidence-YYYY-MM-DD-HHMMSS.zip)")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages to stderr")
+	cmd.Flags().StringVar(&productName, "product", "", "Product name for the evidence bundle (default: Product)")
 
 	return cmd
 }
