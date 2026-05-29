@@ -73,6 +73,25 @@ func TestCheckTyposquatting_DetectsTyposquat(t *testing.T) {
 	}
 }
 
+func TestCheckTyposquatting_SkipsPopularPackages(t *testing.T) {
+	// Popular packages that are close in edit distance to OTHER popular
+	// packages must not be flagged (e.g. golang.org/x/text vs golang.org/x/net,
+	// hashicorp/aws vs hashicorp/tls).
+	components := []models.Component{
+		{Name: "golang.org/x/text", Version: "v0.14.0", Ecosystem: models.EcosystemGo},
+		{Name: "golang.org/x/net", Version: "v0.20.0", Ecosystem: models.EcosystemGo},
+		{Name: "hashicorp/aws", Version: "5.31.0", Ecosystem: models.EcosystemTerraform},
+		{Name: "hashicorp/tls", Version: "4.0.0", Ecosystem: models.EcosystemTerraform},
+	}
+	findings := CheckTyposquatting(components)
+	if len(findings) != 0 {
+		t.Errorf("popular packages should not flag each other, got %d findings:", len(findings))
+		for _, f := range findings {
+			t.Logf("  %s: %s", f.ID, f.Summary)
+		}
+	}
+}
+
 func TestCheckTyposquatting_IgnoresExactMatch(t *testing.T) {
 	components := []models.Component{
 		{Name: "express", Version: "4.18.0", Ecosystem: models.EcosystemNpm},

@@ -168,12 +168,31 @@ func popularListForEcosystem(eco models.Ecosystem) []string {
 	}
 }
 
+// isPopularPackage returns true if the given name is itself in the popular
+// package list for the ecosystem. Popular-vs-popular matches are not
+// typosquatting.
+func isPopularPackage(name string, eco models.Ecosystem) bool {
+	for _, pkg := range popularListForEcosystem(eco) {
+		if name == pkg {
+			return true
+		}
+	}
+	return false
+}
+
 // CheckTyposquatting detects potential typosquatting by comparing component
 // names against popular packages using Levenshtein distance.
 func CheckTyposquatting(components []models.Component) []models.Finding {
 	var findings []models.Finding
 
 	for _, comp := range components {
+		// Skip components that are themselves popular packages. Two popular
+		// packages close in edit distance (e.g. golang.org/x/text vs
+		// golang.org/x/net) are not typosquatting.
+		if isPopularPackage(comp.Name, comp.Ecosystem) {
+			continue
+		}
+
 		popular := popularListForEcosystem(comp.Ecosystem)
 		for _, pkg := range popular {
 			if comp.Name == pkg {

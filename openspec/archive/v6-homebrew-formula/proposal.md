@@ -1,13 +1,13 @@
 # Change Proposal: v6-homebrew-formula
 
-**Status:** Proposed
+**Status:** Archived (implemented)
 **Date:** 2026-05-29
 **Author:** Agent
 
 ## Summary
 
 Publish chainsaw as a Homebrew package via a dedicated tap
-(`chainsaw-dev/homebrew-chainsaw`), enabling one-line installation on
+(`jessequinn/homebrew-chainsaw`), enabling one-line installation on
 macOS and Linux. Add a GoReleaser configuration to produce versioned
 release artifacts and wire it into the existing CI workflow. Establish a
 clear path for eventual `homebrew-core` submission once the project
@@ -90,18 +90,18 @@ sboms:
 
 release:
   github:
-    owner: chainsaw-dev
-    name: chainsaw
+    owner: jessequinn
+    name: chainsaw-cli
 ```
 
-### 2. Custom Homebrew tap repository (`chainsaw-dev/homebrew-chainsaw`)
+### 2. Custom Homebrew tap repository (`jessequinn/homebrew-chainsaw`)
 
 Create a new public GitHub repository named `homebrew-chainsaw` under
-the `chainsaw-dev` organisation. This is a separate repository from the
+the `jessequinn` organisation. This is a separate repository from the
 main source; it holds only the Formula Ruby file. Users install via:
 
 ```
-brew tap chainsaw-dev/chainsaw
+brew tap jessequinn/chainsaw
 brew install chainsaw
 ```
 
@@ -124,13 +124,13 @@ completions, and includes a functional test block.
 ```ruby
 class Chainsaw < Formula
   desc "Supply chain security scanner for CRA compliance"
-  homepage "https://github.com/chainsaw-dev/chainsaw"
-  url "https://github.com/chainsaw-dev/chainsaw/releases/download/v#{version}/chainsaw-#{version}-source.tar.gz"
+  homepage "https://github.com/jessequinn/chainsaw-cli"
+  url "https://github.com/jessequinn/chainsaw-cli/releases/download/v#{version}/chainsaw-#{version}-source.tar.gz"
   version "0.3.3"
   sha256 "<sha256-of-source-tarball>"
   license "Apache-2.0"
 
-  head "https://github.com/chainsaw-dev/chainsaw.git", branch: "main"
+  head "https://github.com/jessequinn/chainsaw-cli.git", branch: "main"
 
   depends_on "go" => :build
 
@@ -261,7 +261,7 @@ approach is a small workflow in `homebrew-chainsaw` that listens for
 
 ## Acceptance Criteria
 
-- `brew tap chainsaw-dev/chainsaw && brew install chainsaw` completes
+- `brew tap jessequinn/chainsaw && brew install chainsaw` completes
   successfully on macOS (arm64 and amd64) and Linux (x86_64).
 - `brew test chainsaw` passes all three test assertions.
 - `brew audit --strict chainsaw` produces zero errors.

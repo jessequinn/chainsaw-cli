@@ -3,12 +3,12 @@
 
 class Chainsaw < Formula
   desc "Supply chain security scanner for CRA compliance"
-  homepage "https://github.com/chainsaw-dev/chainsaw"
-  url "https://github.com/chainsaw-dev/chainsaw/archive/refs/tags/v0.4.0.tar.gz"
+  homepage "https://github.com/jessequinn/chainsaw-cli"
+  url "https://github.com/jessequinn/chainsaw-cli/archive/refs/tags/v0.4.0.tar.gz"
   sha256 "PLACEHOLDER"
   license "Apache-2.0"
 
-  head "https://github.com/chainsaw-dev/chainsaw.git", branch: "main"
+  head "https://github.com/jessequinn/chainsaw-cli.git", branch: "main"
 
   depends_on "go" => :build
 

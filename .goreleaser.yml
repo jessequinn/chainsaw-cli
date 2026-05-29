@@ -23,10 +23,12 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     name_template: "chainsaw_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 source:
@@ -37,12 +39,37 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+homebrew_casks:
+  - name: chainsaw
+    repository:
+      owner: jessequinn
+      name: homebrew-chainsaw
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/jessequinn/chainsaw-cli"
+    description: "Supply chain security scanner for CRA compliance"
+    binaries:
+      - chainsaw
+    generate_completions_from_executable:
+      executable: "bin/chainsaw"
+      args:
+        - completion
+      shell_parameter_format: cobra
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/chainsaw"]
+          end
+    custom_block: |
+      head "https://github.com/jessequinn/chainsaw-cli.git", branch: "main"
+
 changelog:
   disable: true
 
 release:
   github:
-    owner: chainsaw-dev
-    name: chainsaw
+    owner: jessequinn
+    name: chainsaw-cli
   draft: false
   prerelease: auto
