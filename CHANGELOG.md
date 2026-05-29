@@ -6,6 +6,102 @@ The format is based on [Common Changelog](https://common-changelog.org/).
 
 ## [Unreleased]
 
+### Added
+
+Add `completion` subcommand generating shell completion scripts for
+bash, zsh, fish, and powershell
+
+Add GoReleaser configuration for cross-platform binary builds
+(linux/darwin amd64+arm64, windows amd64) with SHA-256 checksums
+
+Add GitHub Actions release workflow triggered on version tags, using
+GoReleaser v2 for automated GitHub Releases
+
+Add Homebrew formula (`Formula/chainsaw.rb`) for tap-based installation
+via `brew tap chainsaw-dev/chainsaw && brew install chainsaw`
+
+## [0.5.0] - 2026-05-29
+
+### Added
+
+Add CRA deadline engine with 5 EU regulation milestones (2026-06-11
+through 2027-12-11), urgency levels (OVERDUE/RED/YELLOW/green),
+product category filtering, and formatted timeline table in comply
+reports
+
+Add `chainsaw evidence` command generating ZIP bundle with scan
+results, CRA assessment, supply chain analysis, SBOM, and manifest
+with SHA-256 checksums for audit trail
+
+Add CRA gap remediation plan: `GeneratePlan()` derives prioritized
+actions from failing CRA checks with role assignment
+(engineering/security/legal) and effort estimation
+
+Add time-bounded ignore rules to policy engine: `IgnoreRule` struct
+with optional `expires` (YYYY-MM-DD) and `reason` fields; expired
+ignores surface findings; backward compatible with bare CVE strings
+
+Add SARIF 2.1.0 output for `comply` command via `--format sarif`
+with CRA check-to-SARIF mapping, EUR-Lex helpUri references, and
+severity-to-level conversion
+
+Add `chainsaw baseline` command saving current findings to
+`.chainsaw-baseline.json` with `--update` to refresh while
+preserving creation timestamp; `FilterNew()` for delta reporting
+
+Add `chainsaw init-cra` command generating `.chainsaw.yaml`
+preconfigured for CRA compliance with product category validation,
+`--force` overwrite, and category-specific next steps guidance
+
+Add `chainsaw generate-docs` command producing CRA Article 10(2)
+technical documentation skeleton with 8 sections: product
+description, SDLC, SBOM, vulnerability assessment, update
+mechanism, vulnerability handling, support period, conformity
+assessment
+
+Add `chainsaw generate-declaration` command producing EU Declaration
+of Conformity per Article 28 with product identification,
+manufacturer info, standards applied, essential requirements
+summary, and category-specific conformity procedure
+
+Add policy file inheritance via `extends:` field pointing to local
+path or HTTP URL; max 3 levels deep; merge semantics: child FailOn
+overrides, ignore lists combine with dedup, CRA/SupplyChain
+field-by-field override, ecosystems merge per-key
+
+Add per-ecosystem policy overrides via `ecosystems:` map with
+per-ecosystem `fail-on` thresholds taking precedence over global
+threshold during evaluation
+
+Add `--platform gitlab` flag to `init-ci` command generating
+`.gitlab-ci.yml` with build, scan (SARIF), comply (JSON), and SBOM
+stages
+
+Add `chainsaw schema` command printing JSON Schema v7 for
+scan-result, cra-result, supply-chain-result, and policy formats
+
+Add dependency tree visualization via `--tree` flag on scan command
+with `DependsOn` field on Component, ASCII tree renderer, circular
+dependency detection, and depth limiting
+
+Add outdated dependency detection querying Go proxy and npm registry
+for latest versions; flags packages N major versions behind
+(configurable threshold, default 2)
+
+Add `chainsaw init-hooks` command generating native git pre-commit
+hook or `.pre-commit-config.yaml`; triggers chainsaw scan on
+lockfile changes
+
+Add `--format markdown` output to scan and comply commands producing
+Markdown tables suitable for PR comments and wiki pages
+
+Add phantom dependency detection for npm projects: scans source
+files for require/import statements not declared in package.json
+
+Add `chainsaw watch` command with polling-based lockfile watcher,
+SHA256 change detection, configurable poll interval, and delta
+reporting (new/resolved findings)
+
 ## [0.4.0] - 2026-05-29
 
 ### Added
