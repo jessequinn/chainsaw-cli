@@ -6,6 +6,21 @@ The format is based on [Common Changelog](https://common-changelog.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-28
+
+### Fixed
+
+Fix CI workflow: build from source instead of `go install` (module
+path does not match repository URL)
+
+Upgrade `github/codeql-action` from v3 to v4 (v3 deprecated
+December 2026)
+
+Add SARIF fallback in CI to prevent upload failure when scan
+produces no output
+
+Use `./chainsaw` for all workflow commands after local build
+
 ## [0.3.0] - 2026-05-28
 
 ### Added
