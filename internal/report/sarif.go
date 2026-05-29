@@ -147,11 +147,15 @@ func WriteSARIF(_ context.Context, w io.Writer, result models.ScanResult) error 
 			},
 		}
 
-		if f.Component.PkgURL != "" {
+		loc := f.Component.Location
+		if loc == "" {
+			loc = ecosystemFallbackPath(f.Component.Ecosystem)
+		}
+		if loc != "" {
 			r.Locations = []sarifLocation{{
 				PhysicalLocation: sarifPhysicalLocation{
 					ArtifactLocation: sarifArtifactLocation{
-						URI: f.Component.PkgURL,
+						URI: loc,
 					},
 				},
 			}}
@@ -183,4 +187,29 @@ func WriteSARIF(_ context.Context, w io.Writer, result models.ScanResult) error 
 		return fmt.Errorf("encoding SARIF: %w", err)
 	}
 	return nil
+}
+
+// ecosystemFallbackPath returns a default lockfile path when the
+// component has no Location set. Used so SARIF always has a file URI.
+func ecosystemFallbackPath(eco models.Ecosystem) string {
+	switch eco {
+	case models.EcosystemGo:
+		return "go.mod"
+	case models.EcosystemNpm:
+		return "package-lock.json"
+	case models.EcosystemPyPI:
+		return "requirements.txt"
+	case models.EcosystemDocker:
+		return "Dockerfile"
+	case models.EcosystemTerraform:
+		return ".terraform.lock.hcl"
+	case models.EcosystemGitHubActions:
+		return ".github/workflows"
+	case models.EcosystemAnsible:
+		return "requirements.yml"
+	case models.EcosystemHex:
+		return "mix.lock"
+	default:
+		return ""
+	}
 }

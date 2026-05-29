@@ -3,6 +3,8 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/chainsaw-dev/chainsaw/pkg/models"
@@ -69,15 +71,35 @@ func DetectAll(ctx context.Context, root string) ([]models.Component, error) {
 			if err != nil {
 				return nil, fmt.Errorf("parse %s: %w", m, err)
 			}
+			relPath := manifestRelPath(root, m)
 			for _, c := range deps {
 				key := string(c.Ecosystem) + "|" + c.Name + "|" + c.Version
 				if _, dup := seen[key]; dup {
 					continue
 				}
 				seen[key] = struct{}{}
+				c.Location = relPath
 				components = append(components, c)
 			}
 		}
 	}
 	return components, nil
+}
+
+// manifestRelPath returns the manifest path relative to root, using
+// forward slashes (SARIF convention). Falls back to the base name.
+func manifestRelPath(root, manifest string) string {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return filepath.Base(manifest)
+	}
+	absManifest, err := filepath.Abs(manifest)
+	if err != nil {
+		return filepath.Base(manifest)
+	}
+	rel, err := filepath.Rel(absRoot, absManifest)
+	if err != nil {
+		return filepath.Base(manifest)
+	}
+	return strings.ReplaceAll(rel, string(filepath.Separator), "/")
 }

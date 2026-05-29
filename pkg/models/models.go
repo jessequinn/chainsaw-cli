@@ -150,6 +150,7 @@ type Component struct {
 	Hash      string    `json:"hash,omitempty"`
 	Licenses  []string  `json:"licenses,omitempty"`
 	PkgURL    string    `json:"purl"`
+	Location  string    `json:"location,omitempty"`
 }
 
 type Finding struct {

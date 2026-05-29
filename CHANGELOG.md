@@ -6,6 +6,18 @@ The format is based on [Common Changelog](https://common-changelog.org/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-28
+
+### Fixed
+
+Fix SARIF artifact locations to use file paths instead of package
+URLs (GitHub Code Scanning requires `file:` scheme URIs, not `pkg:`)
+
+Add `Location` field to Component tracking the source manifest path
+relative to the project root
+
+Add ecosystem-based fallback paths for SARIF when Location is not set
+
 ## [0.3.1] - 2026-05-28
 
 ### Fixed
