@@ -50,11 +50,6 @@ homebrew_casks:
     description: "Supply chain security scanner for CRA compliance"
     binaries:
       - chainsaw
-    generate_completions_from_executable:
-      executable: "bin/chainsaw"
-      args:
-        - completion
-      shell_parameter_format: cobra
     hooks:
       post:
         install: |
