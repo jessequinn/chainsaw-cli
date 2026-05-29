@@ -14,12 +14,13 @@ func TestLoadPolicy(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
 	content := `
-fail_on: HIGH
-ignore:
-  - CVE-2024-0001
-licences:
-  deny-list:
-    - GPL-3.0
+policy:
+  fail-on: HIGH
+  ignore:
+    - CVE-2024-0001
+  licences:
+    deny-list:
+      - GPL-3.0
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write temp file: %v", err)
@@ -167,7 +168,8 @@ func TestLoadPolicy_WithCRASection(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
 	content := `
-fail_on: HIGH
+policy:
+  fail-on: HIGH
 cra:
   required-score: 75
   manufacturer: "Acme Corp"
@@ -204,7 +206,8 @@ func TestLoadPolicy_WithSupplyChainSection(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
 	content := `
-fail_on: MEDIUM
+policy:
+  fail-on: MEDIUM
 supply-chain:
   min-pinning-score: 80
   require-sha-pins: true
@@ -287,7 +290,8 @@ func TestLoadPolicy_invalidSeverity(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
 	content := `
-fail_on: HIHG
+policy:
+  fail-on: HIHG
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write temp file: %v", err)
@@ -366,7 +370,8 @@ func TestLoadPolicy_unknownField(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
 	content := `
-fail_on: HIGH
+policy:
+  fail-on: HIGH
 unknown_field: true
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
@@ -386,9 +391,10 @@ func TestLoadPolicy_validPolicy(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
 	content := `
-fail_on: HIGH
-ignore:
-  - CVE-2024-0001
+policy:
+  fail-on: HIGH
+  ignore:
+    - CVE-2024-0001
 cra:
   required-score: 75
 supply-chain:

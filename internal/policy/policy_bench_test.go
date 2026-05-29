@@ -11,21 +11,22 @@ import (
 func BenchmarkLoadPolicy(b *testing.B) {
 	// Create a realistic policy YAML with multiple sections
 	policyYAML := `
-fail_on: HIGH
-ignore:
-  - CVE-2024-0001
-  - CVE-2024-0002
-  - GHSA-1234-5678-9012
-licences:
-  mode: deny
-  deny-list:
-    - GPL-3.0
-    - AGPL-3.0
-    - SSPL-1.0
-  allow-list:
-    - MIT
-    - Apache-2.0
-    - BSD-3-Clause
+policy:
+  fail-on: HIGH
+  ignore:
+    - CVE-2024-0001
+    - CVE-2024-0002
+    - GHSA-1234-5678-9012
+  licences:
+    mode: deny
+    deny-list:
+      - GPL-3.0
+      - AGPL-3.0
+      - SSPL-1.0
+    allow-list:
+      - MIT
+      - Apache-2.0
+      - BSD-3-Clause
 cra:
   required-score: 75
   manufacturer: "Example Corp"

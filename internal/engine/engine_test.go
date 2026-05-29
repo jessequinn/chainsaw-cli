@@ -48,7 +48,8 @@ func TestLoadPolicy_DefaultFile(t *testing.T) {
 
 	// Create a default policy file
 	content := `
-fail_on: HIGH
+policy:
+  fail-on: HIGH
 `
 	if err := os.WriteFile(".chainsaw.yaml", []byte(content), 0644); err != nil {
 		t.Fatalf("write policy file: %v", err)
@@ -67,7 +68,8 @@ func TestLoadPolicy_ExplicitPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".chainsaw.yaml")
 	content := `
-fail_on: CRITICAL
+policy:
+  fail-on: CRITICAL
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write policy file: %v", err)

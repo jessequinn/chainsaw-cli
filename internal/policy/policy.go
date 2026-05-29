@@ -36,13 +36,29 @@ type LicencePolicy struct {
 
 // Policy defines the rules for evaluating scan results.
 type Policy struct {
-	FailOn   models.Severity `yaml:"fail_on"`
+	FailOn   models.Severity `yaml:"fail-on"`
 	Ignore   []string        `yaml:"ignore"`
 
 	// v2 fields
 	CRA         CRAPolicy         `yaml:"cra"`
 	SupplyChain SupplyChainPolicy `yaml:"supply-chain"`
 	Licences    LicencePolicy     `yaml:"licences"`
+}
+
+// policyFile matches the on-disk YAML structure where `fail-on` and `ignore`
+// are nested under a `policy:` key while `cra:`, `supply-chain:`, and
+// `licences:` are top-level siblings.
+type policyFile struct {
+	Policy      policyCore        `yaml:"policy"`
+	CRA         CRAPolicy         `yaml:"cra"`
+	SupplyChain SupplyChainPolicy `yaml:"supply-chain"`
+	Licences    LicencePolicy     `yaml:"licences"`
+}
+
+type policyCore struct {
+	FailOn   models.Severity `yaml:"fail-on"`
+	Ignore   []string        `yaml:"ignore"`
+	Licences LicencePolicy   `yaml:"licences"`
 }
 
 // LoadPolicy reads and parses a .chainsaw.yaml policy file.
@@ -52,18 +68,47 @@ func LoadPolicy(_ context.Context, path string) (*Policy, error) {
 		return nil, fmt.Errorf("reading policy file: %w", err)
 	}
 
-	var p Policy
+	var pf policyFile
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
-	if err := decoder.Decode(&p); err != nil {
+	if err := decoder.Decode(&pf); err != nil {
 		return nil, fmt.Errorf("parsing policy file: %w", err)
+	}
+
+	// Validate raw fail-on value before parsing
+	if pf.Policy.FailOn != "" && pf.Policy.FailOn != models.SeverityNone {
+		valid := map[models.Severity]bool{
+			models.SeverityCritical: true,
+			models.SeverityHigh:     true,
+			models.SeverityMedium:   true,
+			models.SeverityLow:      true,
+		}
+		if !valid[pf.Policy.FailOn] {
+			return nil, fmt.Errorf("invalid policy: invalid fail_on severity %q: must be CRITICAL, HIGH, MEDIUM, or LOW", pf.Policy.FailOn)
+		}
+	}
+
+	// Merge the nested and top-level fields into a single Policy.
+	p := &Policy{
+		FailOn:      models.ParseSeverity(string(pf.Policy.FailOn)),
+		Ignore:      pf.Policy.Ignore,
+		CRA:         pf.CRA,
+		SupplyChain: pf.SupplyChain,
+	}
+
+	// Licences can appear either under policy: or at the top level.
+	// Top-level takes precedence if both are set.
+	if len(pf.Licences.DenyList) > 0 || len(pf.Licences.AllowList) > 0 || pf.Licences.Mode != "" {
+		p.Licences = pf.Licences
+	} else {
+		p.Licences = pf.Policy.Licences
 	}
 
 	if err := p.validate(); err != nil {
 		return nil, fmt.Errorf("invalid policy: %w", err)
 	}
 
-	return &p, nil
+	return p, nil
 }
 
 // validate checks that the policy fields have valid values.

@@ -8,9 +8,9 @@ policy:
     # - CVE-2024-1234
     # - GHSA-xxxx-yyyy
 
-  # License policy
-  licenses:
-    deny:
+  # Licence policy
+  licences:
+    deny-list:
       - GPL-3.0-only
       - AGPL-3.0-only
       - AGPL-3.0-or-later
