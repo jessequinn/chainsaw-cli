@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -75,16 +76,13 @@ func LoadPolicy(_ context.Context, path string) (*Policy, error) {
 		return nil, fmt.Errorf("parsing policy file: %w", err)
 	}
 
-	// Validate raw fail-on value before parsing
-	if pf.Policy.FailOn != "" && pf.Policy.FailOn != models.SeverityNone {
-		valid := map[models.Severity]bool{
-			models.SeverityCritical: true,
-			models.SeverityHigh:     true,
-			models.SeverityMedium:   true,
-			models.SeverityLow:      true,
-		}
-		if !valid[pf.Policy.FailOn] {
-			return nil, fmt.Errorf("invalid policy: invalid fail_on severity %q: must be CRITICAL, HIGH, MEDIUM, or LOW", pf.Policy.FailOn)
+	// Validate raw fail-on value before normalization.
+	// ParseSeverity silently maps unknown values to NONE, so we must
+	// reject typos like "HIHG" here rather than letting them become NONE.
+	if raw := pf.Policy.FailOn; raw != "" {
+		normalised := models.ParseSeverity(string(raw))
+		if normalised == models.SeverityNone && strings.ToUpper(string(raw)) != string(models.SeverityNone) {
+			return nil, fmt.Errorf("invalid policy: invalid fail_on severity %q: must be CRITICAL, HIGH, MEDIUM, or LOW", raw)
 		}
 	}
 
